@@ -1,0 +1,303 @@
+/* ── Reset & base ─────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  min-height: 100vh;
+}
+
+/* ── Header ───────────────────────────────────────────── */
+header {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+header h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  color: #f78166;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.controls label {
+  font-size: .85rem;
+  color: #8b949e;
+}
+
+select, input[type="text"] {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  padding: 6px 10px;
+  font-size: .9rem;
+  outline: none;
+}
+select:focus, input[type="text"]:focus {
+  border-color: #58a6ff;
+}
+
+/* ── Player search / autocomplete ─────────────────────── */
+.player-search-wrap {
+  position: relative;
+}
+
+#player-search { width: 220px; }
+
+.suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 280px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.suggestions.hidden { display: none; }
+.suggestions li {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: .9rem;
+}
+.suggestions li:hover, .suggestions li.active {
+  background: #1f6feb;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+button {
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: .85rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background .15s;
+}
+button:hover { background: #2ea043; }
+button:disabled { background: #3d4b2f; cursor: not-allowed; }
+
+.btn-remove {
+  background: transparent;
+  color: #f85149;
+  border: 1px solid #f85149;
+  padding: 3px 8px;
+  font-size: .78rem;
+}
+.btn-remove:hover { background: rgba(248,81,73,.15); }
+
+.btn-clear {
+  background: #6e1a1a;
+  color: #f85149;
+  border: 1px solid #f85149;
+}
+.btn-clear:hover { background: #8b2020; }
+.btn-clear:disabled { background: #3d2020; color: #7a3a3a; border-color: #5a2a2a; cursor: not-allowed; }
+
+/* ── Confirm dialog overlay ───────────────────────────── */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+.confirm-overlay.hidden { display: none; }
+
+.confirm-box {
+  background: #161b22;
+  border: 1px solid #f85149;
+  border-radius: 10px;
+  padding: 28px 32px;
+  max-width: 360px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0,0,0,.7);
+}
+.confirm-box .confirm-icon {
+  font-size: 2rem;
+  margin-bottom: 10px;
+}
+.confirm-box h2 {
+  font-size: 1.1rem;
+  color: #f85149;
+  margin-bottom: 8px;
+}
+.confirm-box p {
+  font-size: .88rem;
+  color: #8b949e;
+  margin-bottom: 20px;
+}
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.confirm-actions .btn-cancel {
+  background: #21262d;
+  color: #e6edf3;
+  border: 1px solid #30363d;
+}
+.confirm-actions .btn-cancel:hover { background: #30363d; }
+.confirm-actions .btn-confirm-clear {
+  background: #6e1a1a;
+  color: #f85149;
+  border: 1px solid #f85149;
+}
+.confirm-actions .btn-confirm-clear:hover { background: #8b2020; }
+
+/* ── Spinner ──────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 18px; height: 18px;
+  border: 3px solid #30363d;
+  border-top-color: #58a6ff;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.hidden { display: none !important; }
+
+.update-msg {
+  font-size: .82rem;
+  color: #8b949e;
+}
+.update-msg.success { color: #3fb950; }
+.update-msg.error   { color: #f85149; }
+
+/* ── Main table ───────────────────────────────────────── */
+main {
+  padding: 24px;
+  overflow-x: auto;
+}
+
+#table-wrap {
+  overflow-x: auto;
+}
+
+#kyle-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .83rem;
+  white-space: nowrap;
+}
+
+#kyle-table thead tr th {
+  background: #161b22;
+  border: 1px solid #30363d;
+  padding: 8px 10px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+#kyle-table thead tr th:hover { background: #1f2937; }
+#kyle-table thead tr th.sort-asc::after  { content: " ▲"; font-size: .7em; }
+#kyle-table thead tr th.sort-desc::after { content: " ▼"; font-size: .7em; }
+
+/* sub-header (column labels) */
+#subheader-row th {
+  font-size: .72rem;
+  color: #8b949e;
+  font-weight: 400;
+  cursor: default;
+  background: #0d1117 !important;
+  padding: 3px 10px 6px;
+}
+
+#kyle-table tbody tr { border-bottom: 1px solid #21262d; }
+#kyle-table tbody tr:hover { background: #161b22; }
+
+#kyle-table tbody td {
+  padding: 7px 10px;
+  text-align: center;
+  vertical-align: top;
+  border-right: 1px solid #21262d;
+}
+
+td.name-cell {
+  text-align: left;
+  font-weight: 600;
+  min-width: 160px;
+}
+
+/* normalised value (large) + raw value (small below) */
+.norm-val {
+  font-size: .95rem;
+  font-weight: 600;
+}
+.raw-val {
+  font-size: .72rem;
+  color: #8b949e;
+  margin-top: 2px;
+}
+
+/* color scale for norm values */
+.pos-hi  { color: #3fb950; }
+.pos-med { color: #a8d8a8; }
+.neg-med { color: #f0a070; }
+.neg-hi  { color: #f85149; }
+
+/* KYLE rating */
+td.kyle-cell .norm-val { font-size: 1.05rem; color: #f78166; }
+
+/* ── Inline editing ───────────────────────────────────── */
+.editable {
+  cursor: pointer;
+  border-bottom: 1px dashed #58a6ff;
+}
+.editable:hover { color: #58a6ff; }
+
+.inline-input {
+  background: #0d1117;
+  border: 1px solid #58a6ff;
+  border-radius: 4px;
+  color: #e6edf3;
+  padding: 3px 6px;
+  font-size: .85rem;
+  width: 60px;
+  text-align: center;
+}
+
+.inline-select {
+  background: #0d1117;
+  border: 1px solid #58a6ff;
+  border-radius: 4px;
+  color: #e6edf3;
+  padding: 3px 6px;
+  font-size: .85rem;
+}
+
+/* ── Empty state ──────────────────────────────────────── */
+.empty-msg {
+  text-align: center;
+  color: #8b949e;
+  margin-top: 60px;
+  font-size: 1rem;
+}

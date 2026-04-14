@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. NBA Stats</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <label for="season-select">Season:</label>
+      <select id="season-select"></select>
+
+      <div class="player-search-wrap">
+        <input
+          type="text"
+          id="player-search"
+          placeholder="Add player…"
+          autocomplete="off"
+        />
+        <ul id="player-suggestions" class="suggestions"></ul>
+      </div>
+
+      <button id="update-btn">⟳ Update Data</button>
+      <button id="clear-btn" class="btn-clear">🗑 Clear All</button>
+  <button id="delete-season-btn" class="btn-clear">🗑 Delete Season</button>
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="update-msg" class="update-msg"></span>
+    </div>
+  </header>
+
+  <!-- Clear All confirmation dialog -->
+  <div id="confirm-overlay" class="confirm-overlay hidden">
+    <div class="confirm-box">
+      <div class="confirm-icon">⚠️</div>
+      <h2>Clear All Players?</h2>
+      <p>This will remove every player from your current list. This action cannot be undone.</p>
+      <div class="confirm-actions">
+        <button id="confirm-cancel-btn" class="btn-cancel">Cancel</button>
+        <button id="confirm-clear-btn" class="btn-confirm-clear">🗑 Yes, Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <div id="table-wrap">
+      <table id="kyle-table">
+        <thead>
+          <tr id="header-row"></tr>
+          <tr id="subheader-row"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <p id="empty-msg" class="empty-msg hidden">
+        No players selected. Use the search box above to add players.
+      </p>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

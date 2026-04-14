@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+nba.db
+*.db-shm
+*.db-wal
+server.log
+.env
+.DS_Store
+instance/
