@@ -1,17 +1,20 @@
 """
-Scrape basketball-reference.com for 2026 NBA regular season stats and
-upsert into the local SQLite database.
+Scrape basketball-reference.com for NBA stats and upsert into the local
+SQLite database.
 
-Tables used:
-  1. /leagues/NBA_2026_advanced.html   — USG%, AST%, TOV%, BPM, TS%
-  2. /leagues/NBA_2026_totals.html     — MP (total minutes)
-  3. /leagues/NBA_2026_play-by-play.html — OnCourt, On-Off
+URL patterns:
+  Regular season:
+    /leagues/NBA_{year}_advanced.html
+    /leagues/NBA_{year}_totals.html
+    /leagues/NBA_{year}_play-by-play.html
+  Playoffs:
+    /playoffs/NBA_{year}_advanced.html
+    /playoffs/NBA_{year}_totals.html
+    /playoffs/NBA_{year}_play-by-play.html
 """
 
-import re
 import time
 import logging
-from io import StringIO
 
 import requests
 from bs4 import BeautifulSoup, Comment
@@ -29,8 +32,6 @@ HEADERS = {
         "Chrome/123.0 Safari/537.36"
     )
 }
-
-SEASON_YEAR = 2026
 
 
 # ---------------------------------------------------------------------------
@@ -108,21 +109,34 @@ def _parse_table(soup: BeautifulSoup, table_id: str) -> list[dict]:
 # Per-table scrapers
 # ---------------------------------------------------------------------------
 
-def _scrape_advanced() -> dict[str, dict]:
-    """Returns {player_name: {usg_pct, ast_pct, tov_pct, bpm, ts_pct, player_id}}"""
-    url = f"{BASE_URL}/leagues/NBA_{SEASON_YEAR}_advanced.html"
+def _base_url(year: int, season_type: str, page: str) -> str:
+    """Build a basketball-reference URL for the given year/season_type/page.
+
+    Regular season:  /leagues/NBA_{year}_{page}.html
+    Playoffs:        /playoffs/NBA_{year}_{page}.html
+    """
+    if season_type == "playoffs":
+        return f"{BASE_URL}/playoffs/NBA_{year}_{page}.html"
+    return f"{BASE_URL}/leagues/NBA_{year}_{page}.html"
+
+
+def _scrape_advanced(year: int, season_type: str) -> dict[str, dict]:
+    """Returns {player_name: {usg_pct, ast_pct, tov_pct, bpm, ts_pct}}"""
+    url = _base_url(year, season_type, "advanced")
     soup = _get(url)
     time.sleep(2)
-    rows = _parse_table(soup, "advanced")
+    # Playoffs pages use table id="advanced_stats"; regular season uses "advanced"
+    table_id = "advanced_stats" if season_type == "playoffs" else "advanced"
+    rows = _parse_table(soup, table_id)
     result = {}
     for r in rows:
-        name = r.get("name_display", "").strip()
+        name = (r.get("name_display") or r.get("player") or "").strip()
         # Remove asterisk (HOF marker) from name
         name = name.replace("*", "").strip()
         if not name:
             continue
         # If we already have this player, keep the TOT row (aggregate for traded players)
-        team = r.get("team_name_abbr", "")
+        team = r.get("team_name_abbr") or r.get("team_id") or ""
         if name in result and team != "TOT":
             continue
         result[name] = {
@@ -136,40 +150,42 @@ def _scrape_advanced() -> dict[str, dict]:
     return result
 
 
-def _scrape_totals() -> dict[str, float]:
-    """Returns {player_name: total_minutes}"""
-    url = f"{BASE_URL}/leagues/NBA_{SEASON_YEAR}_totals.html"
+def _scrape_totals(year: int, season_type: str) -> dict[str, dict]:
+    """Returns {player_name: {"mp": total_minutes, "games": games_played}}"""
+    url = _base_url(year, season_type, "totals")
     soup = _get(url)
     time.sleep(2)
     rows = _parse_table(soup, "totals_stats")
     result = {}
     for r in rows:
-        name = r.get("name_display", "").strip().replace("*", "")
+        name = (r.get("name_display") or r.get("player") or "").strip().replace("*", "")
         if not name:
             continue
-        team = r.get("team_name_abbr", "")
+        team = r.get("team_name_abbr") or r.get("team_id") or ""
         mp = _safe_float(r.get("mp"))
+        games_raw = r.get("g")
+        games = int(games_raw) if games_raw and games_raw.strip().isdigit() else None
         # Keep TOT row for traded players; otherwise take first occurrence
         if name in result:
             if team == "TOT":
-                result[name] = mp
+                result[name] = {"mp": mp, "games": games}
         else:
-            result[name] = mp
+            result[name] = {"mp": mp, "games": games}
     return result
 
 
-def _scrape_pbp() -> dict[str, dict]:
+def _scrape_pbp(year: int, season_type: str) -> dict[str, dict]:
     """Returns {player_name: {on_court, on_off}}"""
-    url = f"{BASE_URL}/leagues/NBA_{SEASON_YEAR}_play-by-play.html"
+    url = _base_url(year, season_type, "play-by-play")
     soup = _get(url)
     time.sleep(2)
     rows = _parse_table(soup, "pbp_stats")
     result = {}
     for r in rows:
-        name = r.get("name_display", "").strip().replace("*", "")
+        name = (r.get("name_display") or r.get("player") or "").strip().replace("*", "")
         if not name:
             continue
-        team = r.get("team_name_abbr", "")
+        team = r.get("team_name_abbr") or r.get("team_id") or ""
         if name in result and team != "TOT":
             continue
         result[name] = {
@@ -186,12 +202,26 @@ def _scrape_pbp() -> dict[str, dict]:
 def run_scrape(season_id: int):
     """
     Scrape all three tables and upsert into player_stats for the given season.
+    Looks up the season's year and type from the DB to build the correct URLs.
     """
     logger.info("Starting scrape for season_id=%s", season_id)
 
-    advanced = _scrape_advanced()
-    totals = _scrape_totals()
-    pbp = _scrape_pbp()
+    conn = get_conn()
+    season_row = conn.execute(
+        "SELECT season_year, season_type FROM seasons WHERE id = ?", (season_id,)
+    ).fetchone()
+    conn.close()
+
+    if season_row is None:
+        raise ValueError(f"No season found with id={season_id}")
+
+    year = season_row["season_year"]
+    season_type = season_row["season_type"]
+    logger.info("Scraping %s %s", year, season_type)
+
+    advanced = _scrape_advanced(year, season_type)
+    totals = _scrape_totals(year, season_type)
+    pbp = _scrape_pbp(year, season_type)
 
     # Merge by player name
     all_names = set(advanced) | set(totals) | set(pbp)
@@ -203,7 +233,9 @@ def run_scrape(season_id: int):
     inserted = 0
     for name in sorted(all_names):
         adv = advanced.get(name, {})
-        mp = totals.get(name)
+        totals_row = totals.get(name, {})
+        mp = totals_row.get("mp")
+        games = totals_row.get("games")
         pbp_row = pbp.get(name, {})
 
         # Skip players with no meaningful data
@@ -220,7 +252,7 @@ def run_scrape(season_id: int):
         # Upsert player_stats — preserve manually entered defense & position
         cur.execute(
             """
-            SELECT id, defense, position FROM player_stats
+            SELECT id, defense, position, playoff_games FROM player_stats
             WHERE player_id = ? AND season_id = ?
             """,
             (player_id, season_id),
@@ -228,14 +260,19 @@ def run_scrape(season_id: int):
         existing = cur.fetchone()
         defense = existing["defense"] if existing else None
         position = existing["position"] if existing else None
+        # For playoff_games: use freshly scraped value if available,
+        # otherwise preserve any existing value so manual/prior data is not lost
+        playoff_games_value = games if (season_type == "playoffs" and games is not None) else (
+            existing["playoff_games"] if existing else None
+        )
 
         cur.execute(
             """
             INSERT INTO player_stats
                 (player_id, season_id, minutes, usage_rate, true_shooting_pct,
                  assist_rate, turnover_pct, on_court_rating, on_off_diff, bpm,
-                 defense, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 defense, position, playoff_games)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id, season_id) DO UPDATE SET
                 minutes           = excluded.minutes,
                 usage_rate        = excluded.usage_rate,
@@ -246,7 +283,8 @@ def run_scrape(season_id: int):
                 on_off_diff       = excluded.on_off_diff,
                 bpm               = excluded.bpm,
                 defense           = excluded.defense,
-                position          = excluded.position
+                position          = excluded.position,
+                playoff_games     = excluded.playoff_games
             """,
             (
                 player_id,
@@ -261,6 +299,7 @@ def run_scrape(season_id: int):
                 adv.get("bpm"),
                 defense,
                 position,
+                playoff_games_value,
             ),
         )
         inserted += 1
@@ -272,18 +311,26 @@ def run_scrape(season_id: int):
 
 
 if __name__ == "__main__":
+    import argparse
     logging.basicConfig(level=logging.INFO)
-    from db import init_db, get_conn as _gc
+    from db import init_db
+
+    parser = argparse.ArgumentParser(description="Scrape NBA stats from basketball-reference")
+    parser.add_argument("--year", type=int, default=2026, help="Season year (e.g. 2026)")
+    parser.add_argument("--type", dest="season_type", choices=["regular", "playoffs"],
+                        default="regular", help="Season type")
+    args = parser.parse_args()
 
     init_db()
-    conn = _gc()
+    conn = get_conn()
     row = conn.execute(
-        "SELECT id FROM seasons WHERE season_year=2026 AND season_type='regular'"
+        "SELECT id FROM seasons WHERE season_year=? AND season_type=?",
+        (args.year, args.season_type),
     ).fetchone()
     conn.close()
 
     if row is None:
-        print("Season row not found — run db.py first")
+        print(f"Season row not found for {args.year} {args.season_type} — run db.py or create via the app first")
     else:
         n = run_scrape(row["id"])
         print(f"Done. {n} players upserted.")

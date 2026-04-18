@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. — Cumulative</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="update-msg" class="update-msg"></span>
+
+      <a href="/" class="btn-nav">← Selected Players</a>
+      <a href="/all" class="btn-nav">All Players</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="all-players-intro">
+      Cumulative K.Y.L.E. totals across all seasons. Each player's
+      <strong>Regular</strong> and <strong>Playoffs</strong> ratings are summed
+      independently, then added together for the
+      <strong>Total K.Y.L.E.</strong> score.
+      Only seasons with at least one selected player contribute a rating.
+    </div>
+    <div id="table-wrap">
+      <table id="kyle-table">
+        <thead>
+          <tr id="header-row"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <p id="empty-msg" class="empty-msg hidden">
+        No data yet. Add players on the main page and run a scrape first.
+      </p>
+    </div>
+  </main>
+
+  <script src="/static/cumulative_kyle.js"></script>
+</body>
+</html>

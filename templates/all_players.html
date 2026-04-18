@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. — All Players</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <label for="season-select">Season:</label>
+      <select id="season-select"></select>
+
+      <label for="min-minutes">Min Minutes:</label>
+      <input id="min-minutes" type="number" min="0" step="10" value="200" style="width:70px;" />
+
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="update-msg" class="update-msg"></span>
+
+      <a href="/" class="btn-nav">← Selected Players</a>
+      <a href="/cumulative" class="btn-nav">Cumulative →</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="all-players-intro">
+      Scores use the best/worst bounds from your <strong>selected players</strong>.
+      Values outside that range are <em>not</em> clamped, so a player who far
+      exceeds the best can score above +1 per field.
+    </div>
+    <div id="table-wrap">
+      <table id="kyle-table">
+        <thead>
+          <tr id="header-row"></tr>
+          <tr id="subheader-row"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <p id="empty-msg" class="empty-msg hidden">
+        No data. Select players on the main page first, then return here.
+      </p>
+    </div>
+  </main>
+
+  <script src="/static/all_players.js"></script>
+</body>
+</html>

@@ -116,7 +116,15 @@ button:disabled { background: #3d4b2f; cursor: not-allowed; }
 .btn-clear:hover { background: #8b2020; }
 .btn-clear:disabled { background: #3d2020; color: #7a3a3a; border-color: #5a2a2a; cursor: not-allowed; }
 
-/* ── Confirm dialog overlay ───────────────────────────── */
+.btn-add-season {
+  background: #1a3a5c;
+  color: #58a6ff;
+  border: 1px solid #58a6ff;
+}
+.btn-add-season:hover { background: #1f4a7a; }
+.btn-add-season:disabled { background: #1a2a3a; color: #3a6080; border-color: #3a6080; cursor: not-allowed; }
+
+/* ── Confirm / modal dialog overlay ──────────────────── */
 .confirm-overlay {
   position: fixed;
   inset: 0;
@@ -151,6 +159,22 @@ button:disabled { background: #3d4b2f; cursor: not-allowed; }
   font-size: .88rem;
   color: #8b949e;
   margin-bottom: 20px;
+}
+.confirm-box .form-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.confirm-box .form-row label {
+  width: 40px;
+  font-size: .85rem;
+  color: #8b949e;
+}
+.confirm-box .form-row input[type="number"],
+.confirm-box .form-row select {
+  flex: 1;
 }
 .confirm-actions {
   display: flex;
@@ -259,13 +283,19 @@ td.name-cell {
 }
 
 /* color scale for norm values */
-.pos-hi  { color: #3fb950; }
-.pos-med { color: #a8d8a8; }
-.neg-med { color: #f0a070; }
-.neg-hi  { color: #f85149; }
+.pos-hi     { color: #3fb950; }
+.pos-med    { color: #a8d8a8; }
+.neg-med    { color: #f0a070; }
+.neg-hi     { color: #f85149; }
+/* out-of-selected-range (all-players page only) */
+.pos-beyond { color: #b3f0ff; font-style: italic; }
+.neg-beyond { color: #ff9ef8; font-style: italic; }
 
 /* KYLE rating */
 td.kyle-cell .norm-val { font-size: 1.05rem; color: #f78166; }
+
+/* Cumulative total column */
+td.kyle-cell.cumulative-total .norm-val { font-size: 1.15rem; color: #ffa657; font-weight: 700; }
 
 /* ── Inline editing ───────────────────────────────────── */
 .editable {
@@ -301,3 +331,54 @@ td.kyle-cell .norm-val { font-size: 1.05rem; color: #f78166; }
   margin-top: 60px;
   font-size: 1rem;
 }
+
+/* ── Nav link (Selected ↔ All Players) ────────────────── */
+a.btn-nav {
+  display: inline-block;
+  background: #1a3a5c;
+  color: #58a6ff;
+  border: 1px solid #58a6ff;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: .85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background .15s;
+  margin-left: auto;
+}
+a.btn-nav:hover { background: #1f4a7a; }
+
+/* ── Add-to-selected button (all players table) ────────── */
+.add-cell { text-align: center; white-space: nowrap; }
+
+.btn-add-player {
+  background: #0d3a1f;
+  color: #3fb950;
+  border: 1px solid #3fb950;
+  border-radius: 5px;
+  padding: 3px 10px;
+  font-size: .78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.btn-add-player:hover:not(:disabled) { background: #1a5c30; }
+.btn-add-player:disabled { opacity: .6; cursor: default; }
+.btn-add-player--added {
+  background: #161b22;
+  color: #8b949e;
+  border-color: #30363d;
+}
+
+/* ── All-players intro banner ─────────────────────────── */
+.all-players-intro {
+  font-size: .82rem;
+  color: #8b949e;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+}
+.all-players-intro strong { color: #e6edf3; }
+.all-players-intro em     { color: #58a6ff; font-style: normal; }

@@ -42,6 +42,7 @@ def init_db():
             bpm             REAL,
             defense         REAL,
             position        TEXT,
+            playoff_games   INTEGER,
             UNIQUE(player_id, season_id)
         );
 
@@ -53,11 +54,20 @@ def init_db():
         );
     """)
 
+    # Migration: add playoff_games column if it doesn't exist yet
+    existing_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_stats)").fetchall()]
+    if "playoff_games" not in existing_cols:
+        cur.execute("ALTER TABLE player_stats ADD COLUMN playoff_games INTEGER")
+
     # Seed the 2026 Regular Season row if it doesn't exist
     cur.execute(
-        "INSERT OR IGNORE INTO seasons (label, season_year, season_type) VALUES (?, ?, ?)",
-        ("2026 Regular Season", 2026, "regular"),
+        "SELECT id FROM seasons WHERE season_year = 2026 AND season_type = 'regular'"
     )
+    if cur.fetchone() is None:
+        cur.execute(
+            "INSERT INTO seasons (label, season_year, season_type) VALUES (?, ?, ?)",
+            ("2026 Regular Season", 2026, "regular"),
+        )
 
     conn.commit()
     conn.close()

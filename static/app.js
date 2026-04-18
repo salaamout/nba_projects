@@ -1,5 +1,6 @@
 /* ── State ─────────────────────────────────────────────────────── */
 let currentSeasonId = null;
+let currentSeasonType = "regular";   // "regular" | "playoffs"
 let allPlayers = [];          // [{id, name}] for autocomplete
 let selectedData = [];        // latest /api/selected response
 let sortCol = "kyle_rating";
@@ -9,6 +10,7 @@ let sortDir = "desc";         // "asc" | "desc"
 const COLUMNS = [
   { key: "name",            label: "Player",         sub: "",               editable: false, isName: true },
   { key: "position",        label: "Position",       sub: "",               editable: "select" },
+  { key: "playoff_games",   label: "GP",             sub: "playoff games",  editable: false, playoffsOnly: true },
   { key: "minutes",         label: "Minutes",        sub: "total MP",       editable: false },
   { key: "usage_rate",      label: "Usage%",         sub: "USG%",           editable: false },
   { key: "points_per_shot", label: "Pts/Shot",       sub: "TS% × 2",        editable: false },
@@ -24,10 +26,12 @@ const COLUMNS = [
 /* ── Boot ──────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
   await loadSeasons();
-  buildTableHeaders();
   setupSearch();
 
   document.getElementById("update-btn").addEventListener("click", handleUpdate);
+  document.getElementById("add-season-btn").addEventListener("click", openAddSeasonModal);
+  document.getElementById("add-season-cancel-btn").addEventListener("click", closeAddSeasonModal);
+  document.getElementById("add-season-confirm-btn").addEventListener("click", handleAddSeason);
   document.getElementById("clear-btn").addEventListener("click", () => {
     if (selectedData.length === 0) return; // nothing to clear
     document.getElementById("confirm-overlay").classList.remove("hidden");
@@ -42,25 +46,43 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   document.getElementById("season-select").addEventListener("change", e => {
     currentSeasonId = parseInt(e.target.value);
+    currentSeasonType = seasonTypeMap[currentSeasonId] || "regular";
+    updateNavLinks();
+    buildTableHeaders();
     loadAllPlayers();
     loadSelected();
   });
 });
 
 /* ── Seasons ───────────────────────────────────────────────────── */
+// Map from season id -> season_type for quick lookup
+const seasonTypeMap = {};
+
+function updateNavLinks() {
+  const allLink = document.querySelector('a.btn-nav[href^="/all"]');
+  if (allLink && currentSeasonId) allLink.href = `/all?season_id=${currentSeasonId}`;
+}
+
 async function loadSeasons() {
   const seasons = await apiFetch("/api/seasons");
   const sel = document.getElementById("season-select");
   sel.innerHTML = "";
   for (const s of seasons) {
+    seasonTypeMap[s.id] = s.season_type;
     const opt = document.createElement("option");
     opt.value = s.id;
     opt.textContent = s.label;
     sel.appendChild(opt);
   }
   if (seasons.length) {
-    currentSeasonId = seasons[0].id;
+    const params = new URLSearchParams(window.location.search);
+    const paramId = parseInt(params.get("season_id"));
+    const match = paramId && seasons.find(s => s.id === paramId);
+    currentSeasonId = match ? paramId : seasons[0].id;
+    currentSeasonType = seasonTypeMap[currentSeasonId] || "regular";
     sel.value = currentSeasonId;
+    updateNavLinks();
+    buildTableHeaders();
     await loadAllPlayers();
     await loadSelected();
   }
@@ -124,6 +146,110 @@ async function handleClearAll() {
   }
 }
 
+/* ── Add Season modal ──────────────────────────────────────────── */
+function openAddSeasonModal() {
+  const overlay = document.getElementById("add-season-overlay");
+  const errEl = document.getElementById("add-season-error");
+  // Reset to current year by default
+  document.getElementById("new-season-year").value = new Date().getFullYear();
+  document.getElementById("new-season-type").value = "regular";
+  errEl.textContent = "";
+  errEl.classList.add("hidden");
+  document.getElementById("add-season-confirm-btn").disabled = false;
+  overlay.classList.remove("hidden");
+  document.getElementById("new-season-year").focus();
+}
+
+function closeAddSeasonModal() {
+  document.getElementById("add-season-overlay").classList.add("hidden");
+}
+
+async function handleAddSeason() {
+  const yearInput = document.getElementById("new-season-year");
+  const typeInput = document.getElementById("new-season-type");
+  const errEl = document.getElementById("add-season-error");
+  const confirmBtn = document.getElementById("add-season-confirm-btn");
+  const spinner = document.getElementById("spinner");
+  const msg = document.getElementById("update-msg");
+
+  const year = parseInt(yearInput.value);
+  const seasonType = typeInput.value;
+
+  if (!year || year < 1990 || year > 2100) {
+    errEl.textContent = "Please enter a valid year (1990–2100).";
+    errEl.classList.remove("hidden");
+    return;
+  }
+
+  errEl.classList.add("hidden");
+  confirmBtn.disabled = true;
+  spinner.classList.remove("hidden");
+  msg.textContent = "Creating season…";
+  msg.className = "update-msg";
+
+  try {
+    // 1. Create the season row
+    const season = await apiFetch("/api/seasons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ season_year: year, season_type: seasonType }),
+    });
+
+    // 2. Add to the <select> and switch to it
+    const sel = document.getElementById("season-select");
+    const opt = document.createElement("option");
+    opt.value = season.id;
+    opt.textContent = season.label;
+    // Insert at the top (seasons are ordered DESC by year)
+    sel.insertBefore(opt, sel.firstChild);
+    currentSeasonId = season.id;
+    seasonTypeMap[season.id] = season.season_type;
+    currentSeasonType = season.season_type;
+    sel.value = currentSeasonId;
+    buildTableHeaders();
+
+    closeAddSeasonModal();
+
+    // 3. Auto-scrape the new season
+    msg.textContent = `Fetching ${season.label} data from basketball-reference…`;
+
+    const res = await apiFetch(`/api/update?season_id=${currentSeasonId}`, { method: "POST" });
+    msg.textContent = `✓ ${season.label} added — ${res.players_upserted} players`;
+    msg.className = "update-msg success";
+
+    await loadAllPlayers();
+
+    // 4. Auto-select players from the nearest existing season
+    try {
+      const nearest = await apiFetch(`/api/seasons/${currentSeasonId}/nearest_selected`);
+      if (nearest.player_ids && nearest.player_ids.length > 0) {
+        msg.textContent = `Copying ${nearest.player_ids.length} players from nearest season…`;
+        await Promise.all(
+          nearest.player_ids.map(pid =>
+            apiFetch("/api/selected", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ player_id: pid, season_id: currentSeasonId }),
+            }).catch(() => {/* ignore players not in this season's stats */})
+          )
+        );
+        msg.textContent = `✓ ${season.label} added — ${res.players_upserted} players, ${nearest.player_ids.length} players auto-selected`;
+      }
+    } catch (_) {
+      // Nearest-season copy is best-effort; don't block on failure
+    }
+
+    await loadSelected();
+  } catch (err) {
+    closeAddSeasonModal();
+    msg.textContent = `✗ ${err.message}`;
+    msg.className = "update-msg error";
+  } finally {
+    confirmBtn.disabled = false;
+    spinner.classList.add("hidden");
+  }
+}
+
 /* ── Delete season ─────────────────────────────────────────────── */
 async function handleDeleteSeason() {
   if (!currentSeasonId) return;
@@ -170,6 +296,9 @@ function buildTableHeaders() {
   subRow.innerHTML = "";
 
   for (const col of COLUMNS) {
+    // Hide playoffs-only columns for regular seasons
+    if (col.playoffsOnly && currentSeasonType !== "playoffs") continue;
+
     // main header
     const th = document.createElement("th");
     th.textContent = col.label;
@@ -239,6 +368,9 @@ function buildRow(player) {
   const tr = document.createElement("tr");
 
   for (const col of COLUMNS) {
+    // Skip playoffs-only columns for regular seasons
+    if (col.playoffsOnly && currentSeasonType !== "playoffs") continue;
+
     const td = document.createElement("td");
 
     if (col.isName) {
@@ -264,6 +396,11 @@ function buildRow(player) {
     } else if (col.key === "position") {
       // Inline-editable position dropdown
       renderPositionCell(td, player);
+
+    } else if (col.playoffsOnly) {
+      // Playoff-specific display-only integer (e.g. games played)
+      const val = player[col.key];
+      td.textContent = (val !== null && val !== undefined) ? val : "—";
 
     } else if (col.editable === "number") {
       // Inline-editable number (defense)

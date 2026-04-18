@@ -24,10 +24,13 @@
       </div>
 
       <button id="update-btn">⟳ Update Data</button>
+      <button id="add-season-btn" class="btn-add-season">＋ Add Season</button>
       <button id="clear-btn" class="btn-clear">🗑 Clear All</button>
   <button id="delete-season-btn" class="btn-clear">🗑 Delete Season</button>
       <span id="spinner" class="spinner hidden"></span>
       <span id="update-msg" class="update-msg"></span>
+      <a href="/all" class="btn-nav">All Players →</a>
+      <a href="/cumulative" class="btn-nav">Cumulative →</a>
     </div>
   </header>
 
@@ -40,6 +43,31 @@
       <div class="confirm-actions">
         <button id="confirm-cancel-btn" class="btn-cancel">Cancel</button>
         <button id="confirm-clear-btn" class="btn-confirm-clear">🗑 Yes, Clear All</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Season dialog -->
+  <div id="add-season-overlay" class="confirm-overlay hidden">
+    <div class="confirm-box">
+      <div class="confirm-icon">🏀</div>
+      <h2>Add New Season</h2>
+      <p>Enter the season year and type. Data will be automatically fetched from basketball-reference.com.</p>
+      <div class="form-row">
+        <label for="new-season-year">Year</label>
+        <input id="new-season-year" type="number" min="1990" max="2100" placeholder="e.g. 2025" />
+      </div>
+      <div class="form-row">
+        <label for="new-season-type">Type</label>
+        <select id="new-season-type">
+          <option value="regular">Regular Season</option>
+          <option value="playoffs">Playoffs</option>
+        </select>
+      </div>
+      <p id="add-season-error" class="update-msg error hidden"></p>
+      <div class="confirm-actions">
+        <button id="add-season-cancel-btn" class="btn-cancel">Cancel</button>
+        <button id="add-season-confirm-btn" class="btn-confirm-clear">＋ Add &amp; Fetch Data</button>
       </div>
     </div>
   </div>
