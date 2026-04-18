@@ -54,10 +54,17 @@ def init_db():
         );
     """)
 
-    # Migration: add playoff_games column if it doesn't exist yet
+    # Migrations: player_stats
     existing_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_stats)").fetchall()]
     if "playoff_games" not in existing_cols:
         cur.execute("ALTER TABLE player_stats ADD COLUMN playoff_games INTEGER")
+
+    # Migrations: players
+    existing_player_cols = [row[1] for row in cur.execute("PRAGMA table_info(players)").fetchall()]
+    if "bbref_url" not in existing_player_cols:
+        cur.execute("ALTER TABLE players ADD COLUMN bbref_url TEXT")
+    if "birthdate" not in existing_player_cols:
+        cur.execute("ALTER TABLE players ADD COLUMN birthdate TEXT")
 
     # Seed the 2026 Regular Season row if it doesn't exist
     cur.execute(

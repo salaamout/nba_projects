@@ -108,8 +108,12 @@ function buildRow(player) {
     const td = document.createElement("td");
 
     if (col.isName) {
-      td.className   = "name-cell";
-      td.textContent = player.name;
+      td.className = "name-cell";
+      const a = document.createElement("a");
+      a.className = "player-link";
+      a.href = `/player/${player.player_id}`;
+      a.textContent = player.name;
+      td.appendChild(a);
 
     } else if (col.isTotal) {
       td.className = "kyle-cell cumulative-total";

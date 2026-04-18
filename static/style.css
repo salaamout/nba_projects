@@ -382,3 +382,77 @@ a.btn-nav:hover { background: #1f4a7a; }
 }
 .all-players-intro strong { color: #e6edf3; }
 .all-players-intro em     { color: #58a6ff; font-style: normal; }
+
+/* ── Player name link ─────────────────────────────────── */
+a.player-link {
+  color: #e6edf3;
+  text-decoration: none;
+  font-weight: 600;
+}
+a.player-link:hover {
+  color: #58a6ff;
+  text-decoration: underline;
+}
+
+/* ── Player profile page ──────────────────────────────── */
+.player-profile-header {
+  margin-bottom: 28px;
+}
+.player-profile-header h2 {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: #f78166;
+  margin-bottom: 4px;
+}
+.player-meta {
+  font-size: .85rem;
+  color: #8b949e;
+}
+
+.profile-section {
+  margin-bottom: 36px;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #30363d;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.profile-table {
+  border-collapse: collapse;
+  font-size: .83rem;
+  white-space: nowrap;
+  width: 100%;
+}
+.profile-table th {
+  background: #161b22;
+  border: 1px solid #30363d;
+  padding: 8px 12px;
+  text-align: center;
+  color: #8b949e;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.profile-table td {
+  padding: 7px 12px;
+  text-align: center;
+  border-right: 1px solid #21262d;
+  border-bottom: 1px solid #21262d;
+}
+.profile-table tr:hover td { background: #161b22; }
+.profile-table td:first-child {
+  font-weight: 600;
+  color: #e6edf3;
+  text-align: left;
+}

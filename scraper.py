@@ -94,6 +94,11 @@ def _parse_table(soup: BeautifulSoup, table_id: str) -> list[dict]:
         for i, cell in enumerate(cells):
             key = cell.get("data-stat") or (headers[i] if i < len(headers) else str(i))
             row[key] = cell.get_text(strip=True)
+            # Capture the player's basketball-reference page URL
+            if key in ("player", "name_display"):
+                a = cell.find("a", href=True)
+                if a and "/players/" in a.get("href", ""):
+                    row["player_href"] = a["href"]
         # Skip repeated header rows
         if row.get("ranker") == "Rk" or row.get("player") == "Player":
             continue
@@ -108,6 +113,19 @@ def _parse_table(soup: BeautifulSoup, table_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Per-table scrapers
 # ---------------------------------------------------------------------------
+
+def scrape_player_birthdate(bbref_url: str):
+    """
+    Fetch a player's basketball-reference page and return their birth date as
+    'YYYY-MM-DD', or None if not found.
+    E.g. bbref_url = '/players/t/tatumja01.html'
+    """
+    url = BASE_URL + bbref_url
+    soup = _get(url)
+    birth_span = soup.find("span", {"id": "necro-birth"})
+    if birth_span:
+        return birth_span.get("data-birth")
+    return None
 
 def _base_url(year: int, season_type: str, page: str) -> str:
     """Build a basketball-reference URL for the given year/season_type/page.
@@ -146,6 +164,7 @@ def _scrape_advanced(year: int, season_type: str) -> dict[str, dict]:
             "tov_pct": _safe_float(r.get("tov_pct")),
             "bpm": _safe_float(r.get("bpm")),
             "ts_pct": _safe_float(r.get("ts_pct")),
+            "player_href": r.get("player_href"),
         }
     return result
 
@@ -248,6 +267,14 @@ def run_scrape(season_id: int):
         )
         cur.execute("SELECT id FROM players WHERE name = ?", (name,))
         player_id = cur.fetchone()["id"]
+
+        # Store bbref_url if we captured it and it isn't already saved
+        href = adv.get("player_href")
+        if href:
+            cur.execute(
+                "UPDATE players SET bbref_url = ? WHERE id = ? AND (bbref_url IS NULL OR bbref_url = '')",
+                (href, player_id),
+            )
 
         # Upsert player_stats — preserve manually entered defense & position
         cur.execute(

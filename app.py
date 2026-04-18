@@ -1,4 +1,5 @@
 import logging
+from datetime import date as _date
 from flask import Flask, jsonify, request, render_template, abort
 
 from db import init_db, get_conn
@@ -473,6 +474,158 @@ def patch_stats(stats_id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+# --- Player profile page + history -----------------------------------------
+
+@app.route("/player/<int:player_id>")
+def player_page(player_id):
+    return render_template("player.html")
+
+
+@app.route("/api/player/<int:player_id>")
+def player_history(player_id):
+    """
+    Return a player's info and their stats for every season they appear in,
+    each scored with that season's selected-set K.Y.L.E. bounds.
+
+    Response shape:
+        {
+          "player": {id, name, bbref_url, birthdate},
+          "seasons": [
+            {season_id, season_year, season_type, season_label, age,
+             minutes, usage_rate, true_shooting_pct, assist_rate,
+             turnover_pct, on_court_rating, on_off_diff, bpm,
+             defense, position, playoff_games, kyle_rating},
+            ...
+          ]
+        }
+    """
+    conn = get_conn()
+
+    player = conn.execute(
+        "SELECT * FROM players WHERE id = ?", (player_id,)
+    ).fetchone()
+    if not player:
+        conn.close()
+        abort(404)
+
+    player_dict = _row_to_dict(player)
+
+    # All seasons this player has stats for
+    season_rows = conn.execute(
+        """
+        SELECT s.id AS season_id, s.season_year, s.season_type, s.label,
+               ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+               ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+               ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games
+        FROM player_stats ps
+        JOIN seasons s ON s.id = ps.season_id
+        WHERE ps.player_id = ?
+        ORDER BY s.season_year, s.season_type
+        """,
+        (player_id,),
+    ).fetchall()
+
+    season_ids = [r["season_id"] for r in season_rows]
+
+    # Fetch all selected-player stats for every relevant season in one query
+    selected_by_season: dict[int, list[dict]] = {}
+    if season_ids:
+        placeholders = ",".join("?" * len(season_ids))
+        selected_all = conn.execute(
+            f"""
+            SELECT sp.season_id,
+                   p.id AS player_id, p.name,
+                   ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                   ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                   ps.on_off_diff, ps.bpm, ps.defense
+            FROM selected_players sp
+            JOIN players p       ON p.id  = sp.player_id
+            JOIN player_stats ps ON ps.player_id = sp.player_id
+                                 AND ps.season_id = sp.season_id
+            WHERE sp.season_id IN ({placeholders})
+            """,
+            season_ids,
+        ).fetchall()
+
+        for r in selected_all:
+            sid = r["season_id"]
+            selected_by_season.setdefault(sid, []).append(_row_to_dict(r))
+
+    conn.close()
+
+    # Scrape birthdate on first visit if we have a bbref_url but no date yet
+    if not player_dict.get("birthdate") and player_dict.get("bbref_url"):
+        try:
+            from scraper import scrape_player_birthdate
+            bd = scrape_player_birthdate(player_dict["bbref_url"])
+            if bd:
+                upd = get_conn()
+                upd.execute(
+                    "UPDATE players SET birthdate = ? WHERE id = ?", (bd, player_id)
+                )
+                upd.commit()
+                upd.close()
+                player_dict["birthdate"] = bd
+        except Exception:
+            pass
+
+    seasons_out = []
+    for row in season_rows:
+        row_dict = _row_to_dict(row)
+        season_id   = row_dict["season_id"]
+        season_type = row_dict["season_type"]
+        season_year = row_dict["season_year"]
+
+        # Compute K.Y.L.E. against the selected-set bounds for this season
+        kyle_rating = None
+        selected = selected_by_season.get(season_id, [])
+        if selected:
+            exclude    = {"minutes"} if season_type == "playoffs" else set()
+            sel_dicts  = [dict(r) for r in selected]
+            kyle._add_derived(sel_dicts)
+            bounds     = kyle.compute_bounds(sel_dicts, exclude_fields=exclude)
+            target     = dict(row_dict)
+            target["player_id"] = player_id
+            target["name"]      = player_dict["name"]
+            kyle._add_derived([target])
+            kyle._apply_bounds([target], bounds, clamp=True)
+            kyle_rating = target.get("kyle_rating")
+
+        # Age at the midpoint of the season (Feb 1 of the season year)
+        age = None
+        if player_dict.get("birthdate"):
+            try:
+                bd  = _date.fromisoformat(player_dict["birthdate"])
+                mid = _date(season_year, 2, 1)
+                age = mid.year - bd.year - (
+                    1 if (mid.month, mid.day) < (bd.month, bd.day) else 0
+                )
+            except Exception:
+                pass
+
+        seasons_out.append({
+            "season_id":        season_id,
+            "season_year":      season_year,
+            "season_type":      season_type,
+            "season_label":     row_dict["label"],
+            "age":              age,
+            "minutes":          row_dict["minutes"],
+            "usage_rate":       row_dict["usage_rate"],
+            "true_shooting_pct": row_dict["true_shooting_pct"],
+            "assist_rate":      row_dict["assist_rate"],
+            "turnover_pct":     row_dict["turnover_pct"],
+            "on_court_rating":  row_dict["on_court_rating"],
+            "on_off_diff":      row_dict["on_off_diff"],
+            "bpm":              row_dict["bpm"],
+            "defense":          row_dict["defense"],
+            "position":         row_dict["position"],
+            "playoff_games":    row_dict["playoff_games"],
+            "kyle_rating":      kyle_rating,
+        })
+
+    return jsonify({"player": player_dict, "seasons": seasons_out})
 
 
 # ---------------------------------------------------------------------------

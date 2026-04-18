@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. — Player Profile</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="update-msg" class="update-msg"></span>
+      <a href="/" class="btn-nav">← Selected Players</a>
+      <a href="/all" class="btn-nav">All Players</a>
+      <a href="/cumulative" class="btn-nav">Cumulative</a>
+    </div>
+  </header>
+
+  <main>
+    <div id="player-header" class="player-profile-header hidden">
+      <h2 id="player-name"></h2>
+      <span id="player-meta" class="player-meta"></span>
+    </div>
+
+    <!-- Table 1: Season summary -->
+    <section class="profile-section hidden" id="section-summary">
+      <h3 class="section-title">Season Summary</h3>
+      <div class="table-wrap">
+        <table class="profile-table" id="summary-table">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Age</th>
+              <th>Reg. Minutes</th>
+              <th>Reg. K.Y.L.E.</th>
+              <th>Playoff GP</th>
+              <th>Playoff K.Y.L.E.</th>
+            </tr>
+          </thead>
+          <tbody id="summary-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Table 2: Regular season stats -->
+    <section class="profile-section hidden" id="section-regular">
+      <h3 class="section-title">Regular Season Stats</h3>
+      <div class="table-wrap">
+        <table class="profile-table" id="regular-table">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Age</th>
+              <th>Pos</th>
+              <th>Minutes</th>
+              <th>Usage%</th>
+              <th>Pts/Shot</th>
+              <th>Assist%</th>
+              <th>TOV%</th>
+              <th>On-Court</th>
+              <th>On/Off Diff</th>
+              <th>BPM</th>
+              <th>Defense</th>
+              <th>K.Y.L.E.</th>
+            </tr>
+          </thead>
+          <tbody id="regular-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Table 3: Playoff stats -->
+    <section class="profile-section hidden" id="section-playoffs">
+      <h3 class="section-title">Playoff Stats</h3>
+      <div class="table-wrap">
+        <table class="profile-table" id="playoffs-table">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Age</th>
+              <th>Pos</th>
+              <th>GP</th>
+              <th>Usage%</th>
+              <th>Pts/Shot</th>
+              <th>Assist%</th>
+              <th>TOV%</th>
+              <th>On-Court</th>
+              <th>On/Off Diff</th>
+              <th>BPM</th>
+              <th>Defense</th>
+              <th>K.Y.L.E.</th>
+            </tr>
+          </thead>
+          <tbody id="playoffs-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p id="empty-msg" class="empty-msg hidden">No stats found for this player.</p>
+  </main>
+
+  <script src="/static/player.js"></script>
+</body>
+</html>

@@ -179,7 +179,11 @@ function buildRow(player) {
 
     if (col.isName) {
       td.className = "name-cell";
-      td.textContent = player.name;
+      const a = document.createElement("a");
+      a.className = "player-link";
+      a.href = `/player/${player.player_id}`;
+      a.textContent = player.name;
+      td.appendChild(a);
 
     } else if (col.isKyle) {
       td.className = "kyle-cell";
