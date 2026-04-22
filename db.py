@@ -43,6 +43,7 @@ def init_db():
             defense         REAL,
             position        TEXT,
             playoff_games   INTEGER,
+            on_off_asterisk INTEGER DEFAULT 0,
             UNIQUE(player_id, season_id)
         );
 
@@ -52,12 +53,34 @@ def init_db():
             season_id INTEGER NOT NULL REFERENCES seasons(id),
             UNIQUE(player_id, season_id)
         );
+
+        CREATE TABLE IF NOT EXISTS team_game_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_abbr   TEXT NOT NULL,
+            season_year INTEGER NOT NULL,
+            season_type TEXT NOT NULL,
+            game_date   TEXT NOT NULL,
+            margin      REAL NOT NULL,
+            UNIQUE(team_abbr, season_year, season_type, game_date)
+        );
+
+        CREATE TABLE IF NOT EXISTS player_game_appearances (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_id   INTEGER NOT NULL REFERENCES players(id),
+            season_year INTEGER NOT NULL,
+            season_type TEXT NOT NULL,
+            team_abbr   TEXT NOT NULL,
+            game_date   TEXT NOT NULL,
+            UNIQUE(player_id, season_year, season_type, game_date)
+        );
     """)
 
     # Migrations: player_stats
     existing_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_stats)").fetchall()]
     if "playoff_games" not in existing_cols:
         cur.execute("ALTER TABLE player_stats ADD COLUMN playoff_games INTEGER")
+    if "on_off_asterisk" not in existing_cols:
+        cur.execute("ALTER TABLE player_stats ADD COLUMN on_off_asterisk INTEGER DEFAULT 0")
 
     # Migrations: players
     existing_player_cols = [row[1] for row in cur.execute("PRAGMA table_info(players)").fetchall()]
@@ -65,6 +88,8 @@ def init_db():
         cur.execute("ALTER TABLE players ADD COLUMN bbref_url TEXT")
     if "birthdate" not in existing_player_cols:
         cur.execute("ALTER TABLE players ADD COLUMN birthdate TEXT")
+    if "nba_id" not in existing_player_cols:
+        cur.execute("ALTER TABLE players ADD COLUMN nba_id INTEGER")
 
     # Seed the 2026 Regular Season row if it doesn't exist
     cur.execute(

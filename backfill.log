@@ -1,0 +1,937 @@
+/Users/kyleeaton/nba_projects/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+--- Scraping 1978 regular (season_id=109) ---
+INFO:__main__:Starting scrape for season_id=109
+INFO:__main__:Scraping 1978 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1978_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1978_totals.html
+INFO:__main__:Total unique player names found: 286
+INFO:__main__:Fetching LeagueGameLog season=1978 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Bird Averitt' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Bird Averitt' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Bubbles Hawkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Bubbles Hawkins' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'C.J. Kupec' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'C.J. Kupec' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Johnson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Johnson' year=1978 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1978 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Freddie Boyd' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Freddie Boyd' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo White' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo White' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Louie Dampier' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Louie Dampier' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Mo Layton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Mo Layton' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ricky Marsh' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ricky Marsh' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ted McClain' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ted McClain' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ticky Burden' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ticky Burden' year=1978 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1978 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 286 player rows for season_id=109
+    Done. 286 players upserted.
+--- Scraping 1978 playoffs (season_id=110) ---
+INFO:__main__:Starting scrape for season_id=110
+INFO:__main__:Scraping 1978 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1978_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1978_totals.html
+INFO:__main__:Total unique player names found: 128
+WARNING:__main__:No nba_id for player 'Charles Johnson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Johnson' year=1978 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1978 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1978 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1978 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Louie Dampier' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Louie Dampier' year=1978 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ted McClain' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ted McClain' year=1978 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1978 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 128 player rows for season_id=110
+    Done. 128 players upserted.
+--- Scraping 1979 regular (season_id=111) ---
+INFO:__main__:Starting scrape for season_id=111
+INFO:__main__:Scraping 1979 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1979_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1979_totals.html
+INFO:__main__:Total unique player names found: 280
+INFO:__main__:Fetching LeagueGameLog season=1979 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Bubbles Hawkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Bubbles Hawkins' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Johnson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Johnson' year=1979 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1979 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Geoff Crompton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Geoff Crompton' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo White' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo White' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Louie Dampier' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Louie Dampier' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Sam Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Sam Smith' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ted McClain' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ted McClain' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tommie Green' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tommie Green' year=1979 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1979 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 280 player rows for season_id=111
+    Done. 280 players upserted.
+--- Scraping 1979 playoffs (season_id=112) ---
+INFO:__main__:Starting scrape for season_id=112
+INFO:__main__:Scraping 1979 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1979_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1979_totals.html
+INFO:__main__:Total unique player names found: 127
+WARNING:__main__:No nba_id for player 'Charles Johnson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Johnson' year=1979 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1979 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1979 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1979 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Louie Dampier' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Louie Dampier' year=1979 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ted McClain' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ted McClain' year=1979 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 127 player rows for season_id=112
+    Done. 127 players upserted.
+--- Scraping 1980 regular (season_id=113) ---
+INFO:__main__:Starting scrape for season_id=113
+INFO:__main__:Scraping 1980 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1980_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1980_totals.html
+INFO:__main__:Total unique player names found: 287
+INFO:__main__:Fetching LeagueGameLog season=1980 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Billy Ray Bates' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Billy Ray Bates' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Bubba Wilson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Bubba Wilson' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cheese Johnson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cheese Johnson' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Duck Williams' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Duck Williams' year=1980 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1980 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo White' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo White' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Roy Hamilton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Roy Hamilton' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Sam Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Sam Smith' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1980 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1980 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 287 player rows for season_id=113
+    Done. 287 players upserted.
+--- Scraping 1980 playoffs (season_id=114) ---
+INFO:__main__:Starting scrape for season_id=114
+INFO:__main__:Scraping 1980 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1980_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1980_totals.html
+INFO:__main__:Total unique player names found: 129
+WARNING:__main__:No nba_id for player 'Billy Ray Bates' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Billy Ray Bates' year=1980 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1980 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1980 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1980 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 129 player rows for season_id=114
+    Done. 129 players upserted.
+--- Scraping 1981 regular (season_id=115) ---
+INFO:__main__:Starting scrape for season_id=115
+INFO:__main__:Scraping 1981 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1981_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1981_totals.html
+INFO:__main__:Total unique player names found: 304
+INFO:__main__:Fetching LeagueGameLog season=1981 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Billy Ray Bates' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Billy Ray Bates' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Britton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Britton' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1981 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1981 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Edmund Lawrence' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Edmund Lawrence' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Gar Heard' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Gar Heard' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Geoff Crompton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Geoff Crompton' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Hawkeye Whitney' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Hawkeye Whitney' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'James Ray' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'James Ray' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo White' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo White' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ronnie Valentine' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ronnie Valentine' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Roy Hamilton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Roy Hamilton' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1981 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1981 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 304 player rows for season_id=115
+    Done. 304 players upserted.
+--- Scraping 1981 playoffs (season_id=116) ---
+INFO:__main__:Starting scrape for season_id=116
+INFO:__main__:Scraping 1981 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1981_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1981_totals.html
+INFO:__main__:Total unique player names found: 129
+WARNING:__main__:No nba_id for player 'Billy Ray Bates' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Billy Ray Bates' year=1981 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1981 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1981 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1981 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1981 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 129 player rows for season_id=116
+    Done. 129 players upserted.
+--- Scraping 1982 regular (season_id=117) ---
+INFO:__main__:Starting scrape for season_id=117
+INFO:__main__:Scraping 1982 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1982_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1982_totals.html
+INFO:__main__:Total unique player names found: 315
+INFO:__main__:Fetching LeagueGameLog season=1982 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Billy Ray Bates' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Billy Ray Bates' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Geoff Crompton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Geoff Crompton' year=1982 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1982 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Hawkeye Whitney' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Hawkeye Whitney' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'James Ray' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'James Ray' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pétur Guðmundsson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pétur Guðmundsson' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1982 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1982 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 315 player rows for season_id=117
+    Done. 315 players upserted.
+--- Scraping 1982 playoffs (season_id=118) ---
+INFO:__main__:Starting scrape for season_id=118
+INFO:__main__:Scraping 1982 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1982_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1982_totals.html
+INFO:__main__:Total unique player names found: 138
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1982 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ed Sherod' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ed Sherod' year=1982 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1982 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'James Ray' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'James Ray' year=1982 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1982 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 138 player rows for season_id=118
+    Done. 138 players upserted.
+--- Scraping 1983 regular (season_id=119) ---
+INFO:__main__:Starting scrape for season_id=119
+INFO:__main__:Scraping 1983 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1983_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1983_totals.html
+INFO:__main__:Total unique player names found: 315
+INFO:__main__:Fetching LeagueGameLog season=1983 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Billy Ray Bates' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Billy Ray Bates' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Chubby Cox' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Chubby Cox' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ed Sherod' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ed Sherod' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Geoff Crompton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Geoff Crompton' year=1983 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1983 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Hutch Jones' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Hutch Jones' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'J.J. Anderson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'J.J. Anderson' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'James Ray' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'James Ray' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Joe Hassett' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Joe Hassett' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1983 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1983 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 315 player rows for season_id=119
+    Done. 315 players upserted.
+--- Scraping 1983 playoffs (season_id=120) ---
+INFO:__main__:Starting scrape for season_id=120
+INFO:__main__:Scraping 1983 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1983_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1983_totals.html
+INFO:__main__:Total unique player names found: 140
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ed Sherod' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ed Sherod' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1983 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'James Ray' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'James Ray' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1983 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 140 player rows for season_id=120
+    Done. 140 players upserted.
+--- Scraping 1984 regular (season_id=121) ---
+INFO:__main__:Starting scrape for season_id=121
+INFO:__main__:Scraping 1984 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1984_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1984_totals.html
+INFO:__main__:Total unique player names found: 310
+INFO:__main__:Fetching LeagueGameLog season=1984 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Geoff Crompton' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Geoff Crompton' year=1984 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1984 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Hutch Jones' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Hutch Jones' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'J.J. Anderson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'J.J. Anderson' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Wilson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Wilson' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Tiny Archibald' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Tiny Archibald' year=1984 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1984 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 310 player rows for season_id=121
+    Done. 310 players upserted.
+--- Scraping 1984 playoffs (season_id=122) ---
+INFO:__main__:Starting scrape for season_id=122
+INFO:__main__:Scraping 1984 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1984_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1984_totals.html
+INFO:__main__:Total unique player names found: 182
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'J.J. Anderson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'J.J. Anderson' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1984 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1984 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 182 player rows for season_id=122
+    Done. 182 players upserted.
+--- Scraping 1985 regular (season_id=123) ---
+INFO:__main__:Starting scrape for season_id=123
+INFO:__main__:Scraping 1985 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1985_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1985_totals.html
+INFO:__main__:Total unique player names found: 318
+INFO:__main__:Fetching LeagueGameLog season=1985 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1985 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1985 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'J.J. Anderson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'J.J. Anderson' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Kenton Edelin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Kenton Edelin' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Wilson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Wilson' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1985 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1985 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 318 player rows for season_id=123
+    Done. 318 players upserted.
+--- Scraping 1985 playoffs (season_id=124) ---
+INFO:__main__:Starting scrape for season_id=124
+INFO:__main__:Scraping 1985 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1985_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1985_totals.html
+INFO:__main__:Total unique player names found: 183
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1985 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1985 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 183 player rows for season_id=124
+    Done. 183 players upserted.
+--- Scraping 1986 regular (season_id=125) ---
+INFO:__main__:Starting scrape for season_id=125
+INFO:__main__:Scraping 1986 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1986_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1986_totals.html
+INFO:__main__:Total unique player names found: 323
+INFO:__main__:Fetching LeagueGameLog season=1986 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Charles Pittman' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Pittman' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1986 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1986 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Phelps' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Phelps' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Ray Richardson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Ray Richardson' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pétur Guðmundsson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pétur Guðmundsson' year=1986 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1986 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 323 player rows for season_id=125
+    Done. 323 players upserted.
+--- Scraping 1986 playoffs (season_id=126) ---
+INFO:__main__:Starting scrape for season_id=126
+INFO:__main__:Scraping 1986 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1986_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1986_totals.html
+INFO:__main__:Total unique player names found: 184
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1986 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1986 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1986 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1986 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1986 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1986 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Pétur Guðmundsson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pétur Guðmundsson' year=1986 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 184 player rows for season_id=126
+    Done. 184 players upserted.
+--- Scraping 1987 regular (season_id=127) ---
+INFO:__main__:Starting scrape for season_id=127
+INFO:__main__:Scraping 1987 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1987_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1987_totals.html
+INFO:__main__:Total unique player names found: 335
+INFO:__main__:Fetching LeagueGameLog season=1987 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1987 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Maurice Martin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Maurice Martin' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Phelps' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Phelps' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Wilson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Wilson' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pearl Washington' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pearl Washington' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pete Verhoeven' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pete Verhoeven' year=1987 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1987 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 335 player rows for season_id=127
+    Done. 335 players upserted.
+--- Scraping 1987 playoffs (season_id=128) ---
+INFO:__main__:Starting scrape for season_id=128
+INFO:__main__:Scraping 1987 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1987_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1987_totals.html
+INFO:__main__:Total unique player names found: 184
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1987 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1987 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1987 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1987 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Maurice Martin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Maurice Martin' year=1987 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 184 player rows for season_id=128
+    Done. 184 players upserted.
+--- Scraping 1988 regular (season_id=129) ---
+INFO:__main__:Starting scrape for season_id=129
+INFO:__main__:Scraping 1988 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1988_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1988_totals.html
+INFO:__main__:Total unique player names found: 332
+INFO:__main__:Fetching LeagueGameLog season=1988 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1988 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Maurice Martin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Maurice Martin' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Michael Phelps' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Michael Phelps' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pearl Washington' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pearl Washington' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pétur Guðmundsson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pétur Guðmundsson' year=1988 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1988 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 332 player rows for season_id=129
+    Done. 332 players upserted.
+--- Scraping 1988 playoffs (season_id=130) ---
+INFO:__main__:Starting scrape for season_id=130
+INFO:__main__:Scraping 1988 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1988_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1988_totals.html
+INFO:__main__:Total unique player names found: 187
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1988 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1988 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1988 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Maurice Martin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Maurice Martin' year=1988 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1988 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pétur Guðmundsson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pétur Guðmundsson' year=1988 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'World B. Free' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'World B. Free' year=1988 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 187 player rows for season_id=130
+    Done. 187 players upserted.
+--- Scraping 1989 regular (season_id=131) ---
+INFO:__main__:Starting scrape for season_id=131
+INFO:__main__:Scraping 1989 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1989_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1989_totals.html
+INFO:__main__:Total unique player names found: 353
+INFO:__main__:Fetching LeagueGameLog season=1989 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1989 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pearl Washington' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pearl Washington' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Pétur Guðmundsson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Pétur Guðmundsson' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Rob Lock' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Rob Lock' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Rob Rose' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Rob Rose' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ron Grandison' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ron Grandison' year=1989 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Wayne Engelstad' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Wayne Engelstad' year=1989 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 353 player rows for season_id=131
+    Done. 353 players upserted.
+--- Scraping 1989 playoffs (season_id=132) ---
+INFO:__main__:Starting scrape for season_id=132
+INFO:__main__:Scraping 1989 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1989_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1989_totals.html
+INFO:__main__:Total unique player names found: 183
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1989 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1989 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1989 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1989 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1989 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 183 player rows for season_id=132
+    Done. 183 players upserted.
+--- Scraping 1990 regular (season_id=133) ---
+INFO:__main__:Starting scrape for season_id=133
+INFO:__main__:Scraping 1990 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1990_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1990_totals.html
+INFO:__main__:Total unique player names found: 381
+INFO:__main__:Fetching LeagueGameLog season=1990 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1990 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1990 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1990 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1990 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1990 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1990 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Melvin Turpin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Melvin Turpin' year=1990 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 381 player rows for season_id=133
+    Done. 381 players upserted.
+--- Scraping 1990 playoffs (season_id=134) ---
+INFO:__main__:Starting scrape for season_id=134
+INFO:__main__:Scraping 1990 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1990_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1990_totals.html
+INFO:__main__:Total unique player names found: 186
+WARNING:__main__:No nba_id for player 'Charles Davis' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Charles Davis' year=1990 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1990 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1990 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1990 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1990 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 186 player rows for season_id=134
+    Done. 186 players upserted.
+--- Scraping 1991 regular (season_id=135) ---
+INFO:__main__:Starting scrape for season_id=135
+INFO:__main__:Scraping 1991 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1991_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1991_totals.html
+INFO:__main__:Total unique player names found: 387
+INFO:__main__:Fetching LeagueGameLog season=1991 type=regular mode=P from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1991 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1991 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1991 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1991 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1991 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 387 player rows for season_id=135
+    Done. 387 players upserted.
+--- Scraping 1991 playoffs (season_id=136) ---
+INFO:__main__:Starting scrape for season_id=136
+INFO:__main__:Scraping 1991 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1991_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1991_totals.html
+INFO:__main__:Total unique player names found: 188
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1991 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Dave Greenwood' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Dave Greenwood' year=1991 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1991 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1991 type=playoffs mode=P from stats.nba.com
+INFO:__main__:Upserted 188 player rows for season_id=136
+    Done. 188 players upserted.
+--- Scraping 1992 regular (season_id=137) ---
+INFO:__main__:Starting scrape for season_id=137
+INFO:__main__:Scraping 1992 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1992_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1992_totals.html
+INFO:__main__:Total unique player names found: 387
+INFO:__main__:Fetching LeagueGameLog season=1992 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1992 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1992 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1992 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1992 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Isaac Austin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Isaac Austin' year=1992 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ron Grandison' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ron Grandison' year=1992 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Bardo' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Bardo' year=1992 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1992 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 387 player rows for season_id=137
+    Done. 387 players upserted.
+--- Scraping 1992 playoffs (season_id=138) ---
+INFO:__main__:Starting scrape for season_id=138
+INFO:__main__:Scraping 1992 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1992_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1992_totals.html
+INFO:__main__:Total unique player names found: 185
+WARNING:__main__:No nba_id for player 'Cliff Robinson' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Cliff Robinson' year=1992 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1992 type=playoffs mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1992 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 185 player rows for season_id=138
+    Done. 185 players upserted.
+--- Scraping 1993 regular (season_id=139) ---
+INFO:__main__:Starting scrape for season_id=139
+INFO:__main__:Scraping 1993 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1993_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1993_totals.html
+INFO:__main__:Total unique player names found: 391
+INFO:__main__:Fetching LeagueGameLog season=1993 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1993 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Clarence Weatherspoon' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Clarence Weatherspoon' year=1993 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1993 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Eddie Lee Wilkins' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Eddie Lee Wilkins' year=1993 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Isaac Austin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Isaac Austin' year=1993 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo English' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo English' year=1993 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Bardo' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Bardo' year=1993 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1993 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 391 player rows for season_id=139
+    Done. 391 players upserted.
+--- Scraping 1993 playoffs (season_id=140) ---
+INFO:__main__:Starting scrape for season_id=140
+INFO:__main__:Scraping 1993 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1993_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1993_totals.html
+INFO:__main__:Total unique player names found: 187
+WARNING:__main__:No nba_id for player 'Isaac Austin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Isaac Austin' year=1993 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Fetching LeagueGameLog season=1993 type=playoffs mode=P from stats.nba.com
+INFO:__main__:Upserted 187 player rows for season_id=140
+    Done. 187 players upserted.
+--- Scraping 1994 regular (season_id=141) ---
+INFO:__main__:Starting scrape for season_id=141
+INFO:__main__:Scraping 1994 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1994_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1994_totals.html
+INFO:__main__:Total unique player names found: 404
+INFO:__main__:Fetching LeagueGameLog season=1994 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1994 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Clarence Weatherspoon' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Clarence Weatherspoon' year=1994 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1994 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Fat Lever' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Fat Lever' year=1994 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Isaac Austin' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Isaac Austin' year=1994 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo English' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo English' year=1994 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1994 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 404 player rows for season_id=141
+    Done. 404 players upserted.
+--- Scraping 1994 playoffs (season_id=142) ---
+INFO:__main__:Starting scrape for season_id=142
+INFO:__main__:Scraping 1994 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1994_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1994_totals.html
+INFO:__main__:Total unique player names found: 185
+WARNING:__main__:No nba_id for player 'Jo Jo English' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo English' year=1994 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1994 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 185 player rows for season_id=142
+    Done. 185 players upserted.
+--- Scraping 1995 regular (season_id=143) ---
+INFO:__main__:Starting scrape for season_id=143
+INFO:__main__:Scraping 1995 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1995_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1995_totals.html
+INFO:__main__:Total unique player names found: 407
+INFO:__main__:Fetching LeagueGameLog season=1995 type=regular mode=P from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1995 type=regular mode=T from stats.nba.com
+WARNING:__main__:No nba_id for player 'Clarence Weatherspoon' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Clarence Weatherspoon' year=1995 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1995 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Jo Jo English' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Jo Jo English' year=1995 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ron Grandison' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ron Grandison' year=1995 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1995 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 407 player rows for season_id=143
+    Done. 407 players upserted.
+--- Scraping 1995 playoffs (season_id=144) ---
+INFO:__main__:Starting scrape for season_id=144
+INFO:__main__:Scraping 1995 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1995_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1995_totals.html
+INFO:__main__:Total unique player names found: 185
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1995 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1995 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 185 player rows for season_id=144
+    Done. 185 players upserted.
+--- Scraping 1996 regular (season_id=145) ---
+INFO:__main__:Starting scrape for season_id=145
+INFO:__main__:Scraping 1996 regular
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1996_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/leagues/NBA_1996_totals.html
+INFO:__main__:Total unique player names found: 429
+INFO:__main__:Fetching LeagueGameLog season=1996 type=regular mode=T from stats.nba.com
+INFO:__main__:Fetching LeagueGameLog season=1996 type=regular mode=P from stats.nba.com
+WARNING:__main__:No nba_id for player 'Clarence Weatherspoon' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Clarence Weatherspoon' year=1996 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1996 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Logan Vander Velden' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Logan Vander Velden' year=1996 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Rich Manning' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Rich Manning' year=1996 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ron Grandison' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ron Grandison' year=1996 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Bardo' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Bardo' year=1996 type=regular — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1996 type=regular — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 429 player rows for season_id=145
+    Done. 429 players upserted.
+--- Scraping 1996 playoffs (season_id=146) ---
+INFO:__main__:Starting scrape for season_id=146
+INFO:__main__:Scraping 1996 playoffs
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1996_advanced.html
+INFO:__main__:Fetching https://www.basketball-reference.com/playoffs/NBA_1996_totals.html
+INFO:__main__:Total unique player names found: 188
+WARNING:__main__:No nba_id for player 'Danny Schayes' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Danny Schayes' year=1996 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Ron Grandison' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Ron Grandison' year=1996 type=playoffs — falling back to full team schedule (asterisk set)
+WARNING:__main__:No nba_id for player 'Steve Smith' — cannot fetch appearances from nba_api
+WARNING:__main__:No nba_id and no cached appearances for 'Steve Smith' year=1996 type=playoffs — falling back to full team schedule (asterisk set)
+INFO:__main__:Upserted 188 player rows for season_id=146
+    Done. 188 players upserted.

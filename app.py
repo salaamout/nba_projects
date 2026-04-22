@@ -216,7 +216,8 @@ def get_selected():
             ps.bpm,
             ps.defense,
             ps.position,
-            ps.playoff_games
+            ps.playoff_games,
+            ps.on_off_asterisk
         FROM selected_players sp
         JOIN players p       ON p.id  = sp.player_id
         JOIN player_stats ps ON ps.player_id = sp.player_id
@@ -288,7 +289,8 @@ def get_all_players():
             ps.id AS stats_id,
             ps.minutes, ps.usage_rate, ps.true_shooting_pct,
             ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-            ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games
+            ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
+            ps.on_off_asterisk
         FROM selected_players sp
         JOIN players p       ON p.id  = sp.player_id
         JOIN player_stats ps ON ps.player_id = sp.player_id
@@ -306,7 +308,8 @@ def get_all_players():
             ps.id AS stats_id,
             ps.minutes, ps.usage_rate, ps.true_shooting_pct,
             ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-            ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games
+            ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
+            ps.on_off_asterisk
         FROM players p
         JOIN player_stats ps ON ps.player_id = p.id
         WHERE ps.season_id = ?
@@ -337,6 +340,11 @@ def all_players_page():
 @app.route("/cumulative")
 def cumulative_kyle_page():
     return render_template("cumulative_kyle.html")
+
+
+@app.route("/best3year")
+def best3year_page():
+    return render_template("best3year_kyle.html")
 
 
 # --- Cumulative K.Y.L.E. ---------------------------------------------------
@@ -415,6 +423,132 @@ def cumulative_kyle():
         result.append(entry)
 
     result.sort(key=lambda x: x["total_kyle"], reverse=True)
+    return jsonify(result)
+
+
+# --- Best N-Year K.Y.L.E. --------------------------------------------------
+
+@app.route("/api/best3year")
+def best3year():
+    """Return each player's best consecutive N-year K.Y.L.E. window.
+
+    Query parameters
+    ----------------
+    window : int (default 3, min 1, max 20)
+        Number of consecutive seasons to include in the window.
+
+    For every player who appears in at least one selected season:
+      - K.Y.L.E. ratings are computed season-by-season from the selected set
+        bounds (same as cumulative), but BOTH positive and negative ratings
+        are included.
+      - Regular + playoff ratings for the same season_year are combined into
+        a single year total.
+      - All possible consecutive N-year windows are evaluated and the window
+        with the highest combined total is returned.
+
+    Returns (sorted by best_window_total desc):
+        player_id, name,
+        best_start_year, best_end_year,
+        regular_total, playoffs_total, best_window_total, window
+    """
+    window = request.args.get("window", 3, type=int)
+    window = max(1, min(window, 20))  # clamp to sane range
+
+    conn = get_conn()
+
+    seasons = conn.execute(
+        """
+        SELECT DISTINCT s.id, s.season_year, s.season_type
+        FROM seasons s
+        JOIN selected_players sp ON sp.season_id = s.id
+        ORDER BY s.season_year
+        """
+    ).fetchall()
+
+    # player_id -> {year -> {"regular": float, "playoffs": float, "name": str}}
+    player_years: dict[int, dict] = {}
+
+    for season in seasons:
+        season_id   = season["id"]
+        season_year = season["season_year"]
+        season_type = season["season_type"]
+
+        rows = conn.execute(
+            """
+            SELECT
+                p.id AS player_id, p.name,
+                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                ps.on_off_diff, ps.bpm, ps.defense
+            FROM selected_players sp
+            JOIN players p       ON p.id  = sp.player_id
+            JOIN player_stats ps ON ps.player_id = sp.player_id
+                                 AND ps.season_id = sp.season_id
+            WHERE sp.season_id = ?
+            """,
+            (season_id,),
+        ).fetchall()
+
+        if not rows:
+            continue
+
+        player_dicts = [_row_to_dict(r) for r in rows]
+        calculated   = kyle.calculate(player_dicts, season_type=season_type)
+
+        for p in calculated:
+            pid    = p["player_id"]
+            rating = p.get("kyle_rating")
+            if rating is None:
+                continue
+            if pid not in player_years:
+                player_years[pid] = {"name": p["name"], "years": {}}
+            yr_data = player_years[pid]["years"].setdefault(
+                season_year, {"regular": 0.0, "playoffs": 0.0}
+            )
+            if season_type == "regular":
+                yr_data["regular"] += rating
+            else:
+                yr_data["playoffs"] += rating
+
+    conn.close()
+
+    result = []
+    for pid, pdata in player_years.items():
+        name  = pdata["name"]
+        years = pdata["years"]  # {year: {regular, playoffs}}
+        sorted_years = sorted(years.keys())
+
+        if len(sorted_years) < window:
+            continue  # not enough distinct years
+
+        best_window_entry = None
+
+        for i in range(len(sorted_years) - window + 1):
+            window_years = sorted_years[i : i + window]
+            # Only consider truly consecutive years
+            if window_years[-1] - window_years[0] != window - 1:
+                continue
+
+            reg   = sum(years[y]["regular"]  for y in window_years)
+            play  = sum(years[y]["playoffs"] for y in window_years)
+            total = reg + play
+
+            if best_window_entry is None or total > best_window_entry["best_window_total"]:
+                best_window_entry = {
+                    "player_id":        pid,
+                    "name":             name,
+                    "best_start_year":  window_years[0],
+                    "best_end_year":    window_years[-1],
+                    "regular_total":    round(reg,   4),
+                    "playoffs_total":   round(play,  4),
+                    "best_window_total": round(total, 4),
+                    "window":           window,
+                }
+
+        if best_window_entry:
+            result.append(best_window_entry)
+
+    result.sort(key=lambda x: x["best_window_total"], reverse=True)
     return jsonify(result)
 
 
@@ -518,7 +652,8 @@ def player_history(player_id):
         SELECT s.id AS season_id, s.season_year, s.season_type, s.label,
                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-               ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games
+               ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
+               ps.on_off_asterisk
         FROM player_stats ps
         JOIN seasons s ON s.id = ps.season_id
         WHERE ps.player_id = ?
@@ -623,6 +758,7 @@ def player_history(player_id):
             "position":         row_dict["position"],
             "playoff_games":    row_dict["playoff_games"],
             "kyle_rating":      kyle_rating,
+            "on_off_asterisk":  row_dict.get("on_off_asterisk", 0),
         })
 
     return jsonify({"player": player_dict, "seasons": seasons_out})

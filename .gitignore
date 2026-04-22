@@ -10,3 +10,4 @@ server.log
 .env
 .DS_Store
 instance/
+data_for_import/

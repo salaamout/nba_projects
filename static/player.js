@@ -118,7 +118,7 @@ function renderStatTable(tbodyId, rows, isPlayoffs) {
     statTd(tr, s.assist_rate,      "pct");
     statTd(tr, s.turnover_pct,     "pct");
     statTd(tr, s.on_court_rating,  "dec");
-    statTd(tr, s.on_off_diff,      "dec");
+    statTd(tr, s.on_off_diff,      "dec", s.on_off_asterisk ? "Fewer than 3% of team games missed; on/off diff set to 0" : null);
     statTd(tr, s.bpm,              "dec");
     statTd(tr, s.defense,          "dec");
     kyleTd(tr, s.kyle_rating);
@@ -135,17 +135,24 @@ function td(tr, text) {
   return cell;
 }
 
-function statTd(tr, val, fmt) {
+function statTd(tr, val, fmt, tooltip) {
   const cell = document.createElement("td");
   if (val === null || val === undefined) {
     cell.textContent = "—";
   } else {
     const n = parseFloat(val);
+    let text;
     if (fmt === "pct") {
-      cell.textContent = n.toFixed(1) + "%";
+      text = n.toFixed(1) + "%";
     } else {
-      cell.textContent = n.toFixed(1);
+      text = n.toFixed(1);
     }
+    if (tooltip) {
+      text += " *";
+      cell.title = tooltip;
+      cell.style.cursor = "help";
+    }
+    cell.textContent = text;
   }
   tr.appendChild(cell);
   return cell;

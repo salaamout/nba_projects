@@ -107,6 +107,12 @@ def _apply_bounds(rows, bounds, clamp):
                 row[norm_key] = None
                 continue
 
+            # Asterisk'ed on/off data contributes 0 points to the rating
+            if field == "on_off_diff" and row.get("on_off_asterisk"):
+                row[norm_key] = 0.0
+                has_any = True
+                continue
+
             best, worst = bounds[field]
             span = best - worst
 

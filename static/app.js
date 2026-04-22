@@ -427,6 +427,11 @@ function buildRow(player) {
         const raw = document.createElement("div");
         raw.className = "raw-val";
         raw.textContent = fmtRaw(col.key, rawVal);
+        if (col.key === "on_off_diff" && player.on_off_asterisk) {
+          raw.textContent += " *";
+          raw.title = "Fewer than 3% of team games missed; on/off diff set to 0";
+          raw.style.cursor = "help";
+        }
         td.appendChild(raw);
       }
 

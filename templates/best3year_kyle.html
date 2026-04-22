@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. — Best 3-Year Run</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="update-msg" class="update-msg"></span>
+
+      <label for="window-select" style="font-weight:600;">Window:</label>
+      <select id="window-select" class="btn-nav" style="padding:4px 8px;">
+        <option value="1">1 Year</option>
+        <option value="2">2 Years</option>
+        <option value="3" selected>3 Years</option>
+        <option value="4">4 Years</option>
+        <option value="5">5 Years</option>
+        <option value="6">6 Years</option>
+        <option value="7">7 Years</option>
+        <option value="8">8 Years</option>
+        <option value="9">9 Years</option>
+        <option value="10">10 Years</option>
+      </select>
+
+      <a href="/" class="btn-nav">← Selected Players</a>
+      <a href="/all" class="btn-nav">All Players</a>
+      <a href="/cumulative" class="btn-nav">Cumulative</a>
+    </div>
+  </header>
+
+  <main>
+    <div class="all-players-intro">
+      Best consecutive N-year K.Y.L.E. run for each player. Regular season and
+      playoff ratings for each year are combined (positive <em>and</em> negative),
+      then the highest-scoring window is returned per player.
+      Only players with at least as many consecutive seasons as the chosen window are included.
+    </div>
+    <div id="table-wrap">
+      <table id="kyle-table">
+        <thead>
+          <tr id="header-row"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <p id="empty-msg" class="empty-msg hidden">
+        No data yet. Add players on the main page and run a scrape first.
+      </p>
+    </div>
+  </main>
+
+  <script src="/static/best3year_kyle.js"></script>
+</body>
+</html>
