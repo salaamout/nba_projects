@@ -387,7 +387,7 @@ def cumulative_kyle():
                 p.id AS player_id, p.name,
                 ps.minutes, ps.usage_rate, ps.true_shooting_pct,
                 ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                ps.on_off_diff, ps.bpm, ps.defense
+                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
             FROM selected_players sp
             JOIN players p       ON p.id  = sp.player_id
             JOIN player_stats ps ON ps.player_id = sp.player_id
@@ -479,7 +479,7 @@ def best3year():
                 p.id AS player_id, p.name,
                 ps.minutes, ps.usage_rate, ps.true_shooting_pct,
                 ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                ps.on_off_diff, ps.bpm, ps.defense
+                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
             FROM selected_players sp
             JOIN players p       ON p.id  = sp.player_id
             JOIN player_stats ps ON ps.player_id = sp.player_id
@@ -674,7 +674,7 @@ def player_history(player_id):
                    p.id AS player_id, p.name,
                    ps.minutes, ps.usage_rate, ps.true_shooting_pct,
                    ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                   ps.on_off_diff, ps.bpm, ps.defense
+                   ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
             FROM selected_players sp
             JOIN players p       ON p.id  = sp.player_id
             JOIN player_stats ps ON ps.player_id = sp.player_id
@@ -762,6 +762,303 @@ def player_history(player_id):
         })
 
     return jsonify({"player": player_dict, "seasons": seasons_out})
+
+
+# ---------------------------------------------------------------------------
+# Watch Log routes
+# ---------------------------------------------------------------------------
+
+ROUND_MAP = {
+    "First Round": 1,
+    "Second Round": 2,
+    "Conference Finals": 3,
+    "NBA Finals": 4,
+}
+
+
+def _game_row_to_dict(row):
+    d = dict(row)
+    return d
+
+
+@app.route("/watch_log")
+def watch_log_page():
+    return render_template("watch_log.html")
+
+
+@app.route("/api/watched_games")
+def list_watched_games():
+    """List all watched games with optional filters: year, round, conference."""
+    year       = request.args.get("year", type=int)
+    round_str  = request.args.get("round")
+    conference = request.args.get("conference")
+
+    where_clauses = []
+    params = []
+    if year:
+        where_clauses.append("g.game_year = ?")
+        params.append(year)
+    if round_str:
+        where_clauses.append("g.round = ?")
+        params.append(round_str)
+    if conference:
+        where_clauses.append("g.conference = ?")
+        params.append(conference)
+
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+    conn = get_conn()
+    rows = conn.execute(
+        f"""
+        SELECT g.*,
+               p.name AS best_player_name
+        FROM watched_playoff_games g
+        LEFT JOIN players p ON p.id = g.best_player_id
+        {where_sql}
+        ORDER BY g.game_year DESC, g.date_watched DESC
+        """,
+        params,
+    ).fetchall()
+
+    game_ids = [r["id"] for r in rows]
+    players_by_game: dict[int, list[dict]] = {}
+    if game_ids:
+        placeholders = ",".join("?" * len(game_ids))
+        link_rows = conn.execute(
+            f"""
+            SELECT wgp.game_id, p.id AS player_id, p.name
+            FROM watched_game_players wgp
+            JOIN players p ON p.id = wgp.player_id
+            WHERE wgp.game_id IN ({placeholders})
+            ORDER BY p.name
+            """,
+            game_ids,
+        ).fetchall()
+        for lr in link_rows:
+            players_by_game.setdefault(lr["game_id"], []).append(
+                {"player_id": lr["player_id"], "name": lr["name"]}
+            )
+
+    conn.close()
+
+    result = []
+    for r in rows:
+        d = _game_row_to_dict(r)
+        d["important_players"] = players_by_game.get(d["id"], [])
+        result.append(d)
+
+    return jsonify(result)
+
+
+@app.route("/api/watched_games", methods=["POST"])
+def create_watched_game():
+    data = request.get_json(force=True)
+    required = ("home_team", "away_team", "date_watched", "game_year",
+                 "conference", "round", "game_of_round")
+    missing = [f for f in required if not data.get(f)]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO watched_playoff_games
+                (home_team, away_team, winner_team, date_watched, game_year,
+                 conference, round, game_of_round, best_player_id, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["home_team"], data["away_team"],
+                data.get("winner_team"), data["date_watched"],
+                data["game_year"], data["conference"], data["round"],
+                data["game_of_round"], data.get("best_player_id"),
+                data.get("notes", ""),
+            ),
+        )
+        game_id = cur.lastrowid
+
+        # Link important players
+        for pid in data.get("player_ids", []):
+            conn.execute(
+                "INSERT OR IGNORE INTO watched_game_players (game_id, player_id) VALUES (?, ?)",
+                (game_id, pid),
+            )
+
+        conn.commit()
+        row = conn.execute(
+            "SELECT g.*, p.name AS best_player_name FROM watched_playoff_games g "
+            "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
+            (game_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return jsonify(_game_row_to_dict(row)), 201
+
+
+@app.route("/api/watched_games/<int:game_id>")
+def get_watched_game(game_id):
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT g.*, p.name AS best_player_name FROM watched_playoff_games g "
+        "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
+        (game_id,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    d = _game_row_to_dict(row)
+    link_rows = conn.execute(
+        "SELECT wgp.player_id, p.name FROM watched_game_players wgp "
+        "JOIN players p ON p.id = wgp.player_id WHERE wgp.game_id = ? ORDER BY p.name",
+        (game_id,),
+    ).fetchall()
+    conn.close()
+    d["important_players"] = [{"player_id": r["player_id"], "name": r["name"]} for r in link_rows]
+    return jsonify(d)
+
+
+@app.route("/api/watched_games/<int:game_id>", methods=["PUT"])
+def update_watched_game(game_id):
+    data = request.get_json(force=True)
+    allowed = {
+        "home_team", "away_team", "winner_team", "date_watched",
+        "game_year", "conference", "round", "game_of_round",
+        "best_player_id", "notes",
+    }
+    updates = {k: v for k, v in data.items() if k in allowed}
+
+    conn = get_conn()
+    try:
+        if updates:
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            values = list(updates.values()) + [game_id]
+            conn.execute(
+                f"UPDATE watched_playoff_games SET {set_clause} WHERE id = ?", values
+            )
+
+        if "player_ids" in data:
+            conn.execute("DELETE FROM watched_game_players WHERE game_id = ?", (game_id,))
+            for pid in data["player_ids"]:
+                conn.execute(
+                    "INSERT OR IGNORE INTO watched_game_players (game_id, player_id) VALUES (?, ?)",
+                    (game_id, pid),
+                )
+
+        conn.commit()
+        row = conn.execute(
+            "SELECT g.*, p.name AS best_player_name FROM watched_playoff_games g "
+            "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
+            (game_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        abort(404)
+    return jsonify(_game_row_to_dict(row))
+
+
+@app.route("/api/watched_games/<int:game_id>", methods=["DELETE"])
+def delete_watched_game(game_id):
+    conn = get_conn()
+    try:
+        deleted = conn.execute(
+            "DELETE FROM watched_playoff_games WHERE id = ?", (game_id,)
+        ).rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    if not deleted:
+        abort(404)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/watched_games/best_player_leaderboard")
+def best_player_leaderboard():
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT p.id AS player_id, p.name,
+               COUNT(*) AS best_player_count
+        FROM watched_playoff_games g
+        JOIN players p ON p.id = g.best_player_id
+        GROUP BY g.best_player_id
+        ORDER BY best_player_count DESC, p.name
+        """
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/players_for_year")
+def players_for_year():
+    """Return all players who have stats in a given season year."""
+    year = request.args.get("year", type=int)
+    if not year:
+        return jsonify({"error": "year required"}), 400
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT p.id, p.name
+        FROM players p
+        JOIN player_stats ps ON ps.player_id = p.id
+        JOIN seasons s ON s.id = ps.season_id
+        WHERE s.season_year = ?
+        ORDER BY p.name
+        """,
+        (year,),
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/player/<int:player_id>/watch_log")
+def player_watch_log(player_id):
+    conn = get_conn()
+    player = conn.execute("SELECT id FROM players WHERE id = ?", (player_id,)).fetchone()
+    if not player:
+        conn.close()
+        abort(404)
+
+    best_count = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM watched_playoff_games WHERE best_player_id = ?",
+        (player_id,),
+    ).fetchone()["cnt"]
+
+    best_games = conn.execute(
+        """
+        SELECT g.id, g.game_year, g.home_team, g.away_team, g.winner_team,
+               g.round, g.game_of_round, g.conference, g.date_watched, g.notes
+        FROM watched_playoff_games g
+        WHERE g.best_player_id = ?
+        ORDER BY g.game_year DESC, g.date_watched DESC
+        """,
+        (player_id,),
+    ).fetchall()
+
+    important_games = conn.execute(
+        """
+        SELECT g.id, g.game_year, g.home_team, g.away_team, g.winner_team,
+               g.round, g.game_of_round, g.conference, g.date_watched,
+               g.best_player_id,
+               bp.name AS best_player_name
+        FROM watched_game_players wgp
+        JOIN watched_playoff_games g ON g.id = wgp.game_id
+        LEFT JOIN players bp ON bp.id = g.best_player_id
+        WHERE wgp.player_id = ? AND g.best_player_id != ?
+        ORDER BY g.game_year DESC, g.date_watched DESC
+        """,
+        (player_id, player_id),
+    ).fetchall()
+
+    conn.close()
+    return jsonify({
+        "best_player_count": best_count,
+        "best_player_games": [dict(r) for r in best_games],
+        "important_player_games": [dict(r) for r in important_games],
+    })
 
 
 # ---------------------------------------------------------------------------

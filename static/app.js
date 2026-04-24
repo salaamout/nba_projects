@@ -429,7 +429,7 @@ function buildRow(player) {
         raw.textContent = fmtRaw(col.key, rawVal);
         if (col.key === "on_off_diff" && player.on_off_asterisk) {
           raw.textContent += " *";
-          raw.title = "Fewer than 3% of team games missed; on/off diff set to 0";
+          raw.title = "Fewer than 3% of team games missed; on/off diff replaced with average of other K.Y.L.E. components";
           raw.style.cursor = "help";
         }
         td.appendChild(raw);

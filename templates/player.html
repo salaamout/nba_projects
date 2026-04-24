@@ -16,6 +16,7 @@
       <a href="/all" class="btn-nav">All Players</a>
       <a href="/cumulative" class="btn-nav">Cumulative</a>
       <a href="/best3year" class="btn-nav">Best 3-Year</a>
+      <a href="/watch_log" class="btn-nav">Watch Log</a>
     </div>
   </header>
 
@@ -96,6 +97,50 @@
           </thead>
           <tbody id="playoffs-body"></tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- Watch Log section -->
+    <section class="profile-section hidden" id="section-watchlog">
+      <h3 class="section-title">Playoff Watch Log</h3>
+      <p id="watchlog-best-count" class="watchlog-hero"></p>
+
+      <div id="watchlog-best-wrap" class="hidden">
+        <h4 class="watchlog-sub">Games as Best Player</h4>
+        <div class="table-wrap">
+          <table class="profile-table" id="watchlog-best-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Matchup</th>
+                <th>Round</th>
+                <th>Game #</th>
+                <th>Date Watched</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="watchlog-best-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="watchlog-imp-wrap" class="hidden" style="margin-top:24px;">
+        <h4 class="watchlog-sub">Other Notable Appearances</h4>
+        <div class="table-wrap">
+          <table class="profile-table" id="watchlog-imp-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Matchup</th>
+                <th>Round</th>
+                <th>Game #</th>
+                <th>Best Player</th>
+                <th>Date Watched</th>
+              </tr>
+            </thead>
+            <tbody id="watchlog-imp-body"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 

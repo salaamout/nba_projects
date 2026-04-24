@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. — Playoff Watch Log</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="update-msg" class="update-msg"></span>
+      <a href="/" class="btn-nav">← Selected Players</a>
+      <a href="/all" class="btn-nav">All Players</a>
+      <a href="/cumulative" class="btn-nav">Cumulative</a>
+      <a href="/best3year" class="btn-nav">Best 3-Year</a>
+    </div>
+  </header>
+
+  <main>
+    <h2 class="page-title">🏀 Playoff Watch Log</h2>
+
+    <!-- Leaderboard -->
+    <section class="profile-section" id="section-leaderboard">
+      <h3 class="section-title">Best Player Leaderboard</h3>
+      <div class="table-wrap">
+        <table class="profile-table" id="leaderboard-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>Times Best Player</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Log a Game button -->
+    <section class="profile-section" id="section-log">
+      <h3 class="section-title">
+        Game Log
+        <button class="btn btn-primary" id="btn-add-game" style="margin-left:16px;font-size:.8rem;">+ Log a Game</button>
+      </h3>
+
+      <!-- Filters -->
+      <div class="wl-filters">
+        <label>Year <input type="number" id="filter-year" placeholder="All" style="width:80px;" /></label>
+        <label>Conference
+          <select id="filter-conf">
+            <option value="">All</option>
+            <option>East</option>
+            <option>West</option>
+            <option>Finals</option>
+          </select>
+        </label>
+        <label>Round
+          <select id="filter-round">
+            <option value="">All</option>
+            <option>First Round</option>
+            <option>Second Round</option>
+            <option>Conference Finals</option>
+            <option>NBA Finals</option>
+          </select>
+        </label>
+        <button class="btn" id="btn-filter">Filter</button>
+        <button class="btn" id="btn-clear-filter">Clear</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="profile-table wl-table" id="games-table">
+          <thead>
+            <tr>
+              <th>Date Watched</th>
+              <th>Year</th>
+              <th>Home</th>
+              <th>Away</th>
+              <th>Winner</th>
+              <th>Conf</th>
+              <th>Round</th>
+              <th>Game #</th>
+              <th>Best Player</th>
+              <th>Important Players</th>
+              <th>Notes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="games-body"></tbody>
+        </table>
+      </div>
+      <p id="games-empty" class="empty-msg hidden">No games logged yet.</p>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <h3 id="modal-title">Log a Game</h3>
+      <form id="game-form">
+        <input type="hidden" id="edit-id" />
+
+        <div class="form-grid">
+          <label>Home Team<input type="text" id="f-home" required /></label>
+          <label>Away Team<input type="text" id="f-away" required /></label>
+          <label>Winner
+            <select id="f-winner">
+              <option value="">— unknown —</option>
+            </select>
+          </label>
+          <label>Date Watched<input type="date" id="f-date" required /></label>
+          <label>Year of Game<input type="number" id="f-year" min="1947" max="2100" required /></label>
+          <label>Conference
+            <select id="f-conf" required>
+              <option value="">Select…</option>
+              <option>East</option>
+              <option>West</option>
+              <option>Finals</option>
+            </select>
+          </label>
+          <label>Round
+            <select id="f-round" required>
+              <option value="">Select…</option>
+              <option>First Round</option>
+              <option>Second Round</option>
+              <option>Conference Finals</option>
+              <option>NBA Finals</option>
+            </select>
+          </label>
+          <label>Game #
+            <select id="f-game">
+              <option value="">Select…</option>
+              <option>1</option><option>2</option><option>3</option>
+              <option>4</option><option>5</option><option>6</option><option>7</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="full-width">Notes<textarea id="f-notes" rows="3"></textarea></label>
+
+        <label class="full-width">Important Players
+          <div id="player-loading" class="muted-text" style="display:none;">Loading players…</div>
+          <div id="player-chips" class="player-chips"></div>
+          <div class="player-search-wrap" style="margin-top:6px;">
+            <input type="text" id="f-player-search" placeholder="Search player…" autocomplete="off" style="width:100%;" />
+            <ul id="f-player-suggestions" class="suggestions hidden"></ul>
+          </div>
+        </label>
+
+        <label class="full-width">Best Player
+          <select id="f-best">
+            <option value="">— none —</option>
+          </select>
+        </label>
+
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="button" class="btn" id="btn-cancel-modal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/watch_log.js"></script>
+</body>
+</html>

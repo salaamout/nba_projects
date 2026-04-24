@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     showError("Invalid player URL.");
     return;
   }
-  await loadPlayer(playerId);
+  await Promise.all([loadPlayer(playerId), loadWatchLog(playerId)]);
 });
 
 function getPlayerIdFromUrl() {
@@ -118,7 +118,7 @@ function renderStatTable(tbodyId, rows, isPlayoffs) {
     statTd(tr, s.assist_rate,      "pct");
     statTd(tr, s.turnover_pct,     "pct");
     statTd(tr, s.on_court_rating,  "dec");
-    statTd(tr, s.on_off_diff,      "dec", s.on_off_asterisk ? "Fewer than 3% of team games missed; on/off diff set to 0" : null);
+    statTd(tr, s.on_off_diff,      "dec", s.on_off_asterisk ? "Fewer than 3% of team games missed; on/off diff replaced with average of other K.Y.L.E. components" : null);
     statTd(tr, s.bpm,              "dec");
     statTd(tr, s.defense,          "dec");
     kyleTd(tr, s.kyle_rating);
@@ -189,4 +189,82 @@ async function apiFetch(url, options = {}) {
     throw new Error(err.error || res.statusText);
   }
   return res.json();
+}
+
+/* ── Watch Log ─────────────────────────────────────────────────── */
+async function loadWatchLog(playerId) {
+  try {
+    const data = await apiFetch(`/api/player/${playerId}/watch_log`);
+    renderWatchLog(data);
+  } catch (e) {
+    // silently fail — watch log is optional
+  }
+}
+
+function renderWatchLog(data) {
+  const section = document.getElementById("section-watchlog");
+
+  const { best_player_count, best_player_games, important_player_games } = data;
+
+  const heroEl = document.getElementById("watchlog-best-count");
+  if (best_player_count > 0) {
+    heroEl.textContent = `🏆 Best Player in ${best_player_count} watched game${best_player_count === 1 ? "" : "s"}`;
+  } else {
+    heroEl.textContent = "No games as Best Player yet.";
+  }
+
+  if (best_player_games.length) {
+    const wrap  = document.getElementById("watchlog-best-wrap");
+    const tbody = document.getElementById("watchlog-best-body");
+    wrap.classList.remove("hidden");
+    tbody.innerHTML = "";
+    for (const g of best_player_games) {
+      const tr = document.createElement("tr");
+      wlTd(tr, g.game_year);
+      wlTd(tr, `${g.home_team} vs ${g.away_team}`);
+      wlTd(tr, g.round);
+      wlTd(tr, `Game ${g.game_of_round}`);
+      wlTd(tr, g.date_watched);
+      wlTd(tr, g.notes || "");
+      tbody.appendChild(tr);
+    }
+  }
+
+  if (important_player_games.length) {
+    const wrap  = document.getElementById("watchlog-imp-wrap");
+    const tbody = document.getElementById("watchlog-imp-body");
+    wrap.classList.remove("hidden");
+    tbody.innerHTML = "";
+    for (const g of important_player_games) {
+      const tr = document.createElement("tr");
+      wlTd(tr, g.game_year);
+      wlTd(tr, `${g.home_team} vs ${g.away_team}`);
+      wlTd(tr, g.round);
+      wlTd(tr, `Game ${g.game_of_round}`);
+      if (g.best_player_name) {
+        const cell = document.createElement("td");
+        const a = document.createElement("a");
+        a.href = `/player/${g.best_player_id}`;
+        a.className = "player-link";
+        a.textContent = g.best_player_name;
+        cell.appendChild(a);
+        tr.appendChild(cell);
+      } else {
+        wlTd(tr, "—");
+      }
+      wlTd(tr, g.date_watched);
+      tbody.appendChild(tr);
+    }
+  }
+
+  if (best_player_count > 0 || best_player_games.length || important_player_games.length) {
+    section.classList.remove("hidden");
+  }
+}
+
+function wlTd(tr, text) {
+  const td = document.createElement("td");
+  td.textContent = text ?? "—";
+  tr.appendChild(td);
+  return td;
 }

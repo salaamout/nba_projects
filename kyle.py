@@ -100,6 +100,9 @@ def _apply_bounds(rows, bounds, clamp):
     for row in rows:
         total = 0.0
         has_any = False
+        other_norms = []  # norms of all non-on_off_diff fields (used when asterisk'd)
+        skip_on_off = row.get("on_off_asterisk") and bounds.get("on_off_diff") is not None
+
         for field in FIELDS:
             raw = _safe(row.get(field))
             norm_key = field + "_norm"
@@ -107,10 +110,8 @@ def _apply_bounds(rows, bounds, clamp):
                 row[norm_key] = None
                 continue
 
-            # Asterisk'ed on/off data contributes 0 points to the rating
-            if field == "on_off_diff" and row.get("on_off_asterisk"):
-                row[norm_key] = 0.0
-                has_any = True
+            # Defer asterisk'd on/off — will fill in as average of other norms below
+            if field == "on_off_diff" and skip_on_off:
                 continue
 
             best, worst = bounds[field]
@@ -127,6 +128,19 @@ def _apply_bounds(rows, bounds, clamp):
             row[norm_key] = round(norm, 4)
             total += norm
             has_any = True
+            other_norms.append(norm)
+
+        # For asterisk'd on/off, substitute the average of the other norms
+        if skip_on_off:
+            if other_norms:
+                avg_norm = round(sum(other_norms) / len(other_norms), 4)
+                if clamp:
+                    avg_norm = max(-1.0, min(1.0, avg_norm))
+                row["on_off_diff_norm"] = avg_norm
+                total += avg_norm
+                has_any = True
+            else:
+                row["on_off_diff_norm"] = None
 
         row["kyle_rating"] = round(total, 4) if has_any else None
 

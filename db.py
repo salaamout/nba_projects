@@ -73,6 +73,27 @@ def init_db():
             game_date   TEXT NOT NULL,
             UNIQUE(player_id, season_year, season_type, game_date)
         );
+
+        CREATE TABLE IF NOT EXISTS watched_playoff_games (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            home_team      TEXT NOT NULL,
+            away_team      TEXT NOT NULL,
+            winner_team    TEXT,
+            date_watched   TEXT NOT NULL,
+            game_year      INTEGER NOT NULL,
+            conference     TEXT NOT NULL,
+            round          TEXT NOT NULL,
+            game_of_round  INTEGER NOT NULL,
+            best_player_id INTEGER REFERENCES players(id),
+            notes          TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS watched_game_players (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            game_id   INTEGER NOT NULL REFERENCES watched_playoff_games(id) ON DELETE CASCADE,
+            player_id INTEGER NOT NULL REFERENCES players(id),
+            UNIQUE(game_id, player_id)
+        );
     """)
 
     # Migrations: player_stats
