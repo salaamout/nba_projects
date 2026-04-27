@@ -20,6 +20,7 @@ const COLUMNS = [
   { key: "on_off_diff",     label: "On/Off Diff",    sub: "",               editable: false },
   { key: "bpm",             label: "BPM",            sub: "",               editable: false },
   { key: "defense",         label: "Defense",        sub: "manual",         editable: "number" },
+  { key: "watch_kyle",      label: "Watch K.Y.L.E.", sub: "watch log",      editable: false, playoffsOnly: true, isWatchKyle: true },
   { key: "kyle_rating",     label: "K.Y.L.E.",       sub: "rating",         editable: false, isKyle: true },
 ];
 
@@ -397,6 +398,30 @@ function buildRow(player) {
       norm.className = "norm-val";
       norm.textContent = fmt(player.kyle_rating);
       td.appendChild(norm);
+
+    } else if (col.isWatchKyle) {
+      const wk = player.watch_kyle;
+      if (wk === null || wk === undefined) {
+        td.textContent = "—";
+        td.style.color = "#8b949e";
+      } else {
+        const score = parseFloat(wk);
+        td.textContent = (score >= 0 ? "+" : "") + score.toFixed(3);
+        td.className = score > 0 ? "kyle-pos" : score < 0 ? "kyle-neg" : "";
+
+        const best  = player.watch_best_count   ?? 0;
+        const total = player.watch_total_watched ?? 0;
+        const raw   = player.watch_raw_score;
+        if (total > 0) {
+          const sub = document.createElement("div");
+          sub.className = "watch-games-sub";
+          sub.textContent = `${typeof best === 'number' ? best.toFixed(1) : best} / ${total}`;
+          if (raw !== null && raw !== undefined) {
+            sub.title = `Weighted best-player score: ${parseFloat(raw).toFixed(3)}  (${typeof best === 'number' ? best.toFixed(1) : best} weighted best / ${total} games watched, later rounds weighted more)`;
+          }
+          td.appendChild(sub);
+        }
+      }
 
     } else if (col.key === "position") {
       // Inline-editable position dropdown

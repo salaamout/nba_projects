@@ -26,6 +26,80 @@ def _row_to_dict(row):
     return dict(row)
 
 
+ROUND_WEIGHTS = {
+    "First Round":       1,
+    "Second Round":      2,
+    "Conference Finals": 4,
+    "NBA Finals":        8,
+}
+
+
+def _get_watch_kyle_by_player(conn, season_year):
+    """Return dict of player_id -> watch info for a given playoff year.
+
+    Uses round-weighted scoring:
+      N = sum of round_weight for games where the player was Best Player
+      M = total unweighted games watched
+      raw_score = N / M
+      watch_kyle = (raw_score / max_raw) * 2 - 1  (year-normalised to -1..+1)
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            wgp.player_id,
+            COUNT(DISTINCT wgp.game_id) AS total_watched,
+            SUM(CASE
+                WHEN g.best_player_id = wgp.player_id THEN
+                    CASE g.round
+                        WHEN 'First Round'       THEN 1
+                        WHEN 'Second Round'      THEN 2
+                        WHEN 'Conference Finals' THEN 3
+                        WHEN 'NBA Finals'        THEN 4
+                        ELSE 1
+                    END
+                ELSE 0
+            END) AS weighted_best
+        FROM watched_game_players wgp
+        JOIN watched_playoff_games g ON g.id = wgp.game_id
+        WHERE g.game_year = ?
+        GROUP BY wgp.player_id
+        """,
+        (season_year,),
+    ).fetchall()
+
+    # Pass 1 — compute raw scores
+    players = []
+    for r in rows:
+        M = r["total_watched"] or 0
+        N = r["weighted_best"] or 0.0
+        raw = N / M if M > 0 else 0.0
+        players.append({
+            "player_id":     r["player_id"],
+            "total_watched": M,
+            "weighted_best": N,
+            "raw":           raw,
+        })
+
+    # Pass 2 — year-level normalisation
+    max_raw = max((p["raw"] for p in players), default=0.0)
+
+    result = {}
+    for p in players:
+        if p["total_watched"] == 0:
+            continue
+        if max_raw > 0:
+            watch_kyle = round((p["raw"] / max_raw) * 2 - 1, 3)
+        else:
+            watch_kyle = 0.0
+        result[p["player_id"]] = {
+            "watch_kyle":    watch_kyle,
+            "best_count":    p["weighted_best"],   # weighted N (for sub-label numerator)
+            "total_watched": p["total_watched"],   # unweighted M (for sub-label denominator)
+            "raw_score":     round(p["raw"], 4),
+        }
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -197,7 +271,7 @@ def get_selected():
 
     conn = get_conn()
     season_row = conn.execute(
-        "SELECT season_type FROM seasons WHERE id = ?", (season_id,)
+        "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
     ).fetchone()
     rows = conn.execute(
         """
@@ -227,10 +301,21 @@ def get_selected():
         """,
         (season_id,),
     ).fetchall()
-    conn.close()
 
     season_type = season_row["season_type"] if season_row else "regular"
     player_dicts = [_row_to_dict(r) for r in rows]
+
+    if season_type == "playoffs" and season_row:
+        watch_map = _get_watch_kyle_by_player(conn, season_row["season_year"])
+        for d in player_dicts:
+            wk = watch_map.get(d["player_id"])
+            d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+            d["watch_best_count"]    = wk["best_count"]    if wk else None
+            d["watch_total_watched"] = wk["total_watched"] if wk else None
+            d["watch_raw_score"]     = wk["raw_score"]     if wk else None
+
+    conn.close()
+
     calculated = kyle.calculate(player_dicts, season_type=season_type)
     return jsonify(calculated)
 
@@ -277,9 +362,10 @@ def get_all_players():
     conn = get_conn()
 
     season_row = conn.execute(
-        "SELECT season_type FROM seasons WHERE id = ?", (season_id,)
+        "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
     ).fetchone()
     season_type = season_row["season_type"] if season_row else "regular"
+    season_year = season_row["season_year"] if season_row else None
 
     # Fetch selected players to compute bounds
     selected_rows = conn.execute(
@@ -318,16 +404,37 @@ def get_all_players():
         (season_id,),
     ).fetchall()
 
-    conn.close()
-
     # Build bounds from selected set
     selected_dicts = [_row_to_dict(r) for r in selected_rows]
+
+    if season_type == "playoffs" and season_year:
+        watch_map = _get_watch_kyle_by_player(conn, season_year)
+        for d in selected_dicts:
+            wk = watch_map.get(d["player_id"])
+            d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+            d["watch_best_count"]    = wk["best_count"]    if wk else None
+            d["watch_total_watched"] = wk["total_watched"] if wk else None
+            d["watch_raw_score"]     = wk["raw_score"]     if wk else None
+    else:
+        watch_map = {}
+
+    conn.close()
+
     kyle._add_derived(selected_dicts)
     exclude = {"minutes"} if season_type == "playoffs" else set()
     bounds = kyle.compute_bounds(selected_dicts, exclude_fields=exclude)
 
     # Score all players with those bounds (no clamping)
     all_dicts = [_row_to_dict(r) for r in all_rows]
+
+    if season_type == "playoffs" and watch_map:
+        for d in all_dicts:
+            wk = watch_map.get(d["player_id"])
+            d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+            d["watch_best_count"]    = wk["best_count"]    if wk else None
+            d["watch_total_watched"] = wk["total_watched"] if wk else None
+            d["watch_raw_score"]     = wk["raw_score"]     if wk else None
+
     calculated = kyle.calculate_all(all_dicts, bounds, season_type=season_type)
     return jsonify(calculated)
 
@@ -368,7 +475,7 @@ def cumulative_kyle():
     # All seasons that have at least one selected player
     seasons = conn.execute(
         """
-        SELECT DISTINCT s.id, s.season_type
+        SELECT DISTINCT s.id, s.season_type, s.season_year
         FROM seasons s
         JOIN selected_players sp ON sp.season_id = s.id
         """
@@ -401,6 +508,15 @@ def cumulative_kyle():
             continue
 
         player_dicts = [_row_to_dict(r) for r in rows]
+
+        if season_type == "playoffs":
+            watch_map = _get_watch_kyle_by_player(conn, season["season_year"])
+            for d in player_dicts:
+                wk = watch_map.get(d["player_id"])
+                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+                d["watch_best_count"]    = wk["best_count"]    if wk else None
+                d["watch_total_watched"] = wk["total_watched"] if wk else None
+
         calculated = kyle.calculate(player_dicts, season_type=season_type)
 
         for p in calculated:
@@ -479,7 +595,8 @@ def best3year():
                 p.id AS player_id, p.name,
                 ps.minutes, ps.usage_rate, ps.true_shooting_pct,
                 ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
+                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk,
+                ps.playoff_games
             FROM selected_players sp
             JOIN players p       ON p.id  = sp.player_id
             JOIN player_stats ps ON ps.player_id = sp.player_id
@@ -493,6 +610,18 @@ def best3year():
             continue
 
         player_dicts = [_row_to_dict(r) for r in rows]
+        # build a quick lookup of playoff_games per player for this season
+        playoff_games_map = {r["player_id"]: (r["playoff_games"] or 0) for r in rows}
+
+        watch_map = {}
+        if season_type == "playoffs":
+            watch_map = _get_watch_kyle_by_player(conn, season_year)
+            for d in player_dicts:
+                wk = watch_map.get(d["player_id"])
+                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+                d["watch_best_count"]    = wk["best_count"]    if wk else None
+                d["watch_total_watched"] = wk["total_watched"] if wk else None
+
         calculated   = kyle.calculate(player_dicts, season_type=season_type)
 
         for p in calculated:
@@ -503,12 +632,18 @@ def best3year():
             if pid not in player_years:
                 player_years[pid] = {"name": p["name"], "years": {}}
             yr_data = player_years[pid]["years"].setdefault(
-                season_year, {"regular": 0.0, "playoffs": 0.0}
+                season_year, {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None,
+                              "playoff_watched": 0, "playoff_played": 0}
             )
             if season_type == "regular":
                 yr_data["regular"] += rating
             else:
                 yr_data["playoffs"] += rating
+                wk = watch_map.get(pid)
+                if wk and wk.get("watch_kyle") is not None:
+                    yr_data["watch_kyle"] = wk["watch_kyle"]
+                yr_data["playoff_watched"] = wk["total_watched"] if wk else 0
+                yr_data["playoff_played"]  = playoff_games_map.get(pid, 0)
 
     conn.close()
 
@@ -533,6 +668,12 @@ def best3year():
             play  = sum(years[y]["playoffs"] for y in window_years)
             total = reg + play
 
+            wk_vals = [years[y]["watch_kyle"] for y in window_years if years[y].get("watch_kyle") is not None]
+            wk_total = round(sum(wk_vals), 4) if wk_vals else None
+
+            pw_watched = sum(years[y].get("playoff_watched", 0) for y in window_years)
+            pw_played  = sum(years[y].get("playoff_played",  0) for y in window_years)
+
             if best_window_entry is None or total > best_window_entry["best_window_total"]:
                 best_window_entry = {
                     "player_id":        pid,
@@ -542,6 +683,9 @@ def best3year():
                     "regular_total":    round(reg,   4),
                     "playoffs_total":   round(play,  4),
                     "best_window_total": round(total, 4),
+                    "watch_kyle_total": wk_total,
+                    "playoff_watched":  pw_watched,
+                    "playoff_played":   pw_played,
                     "window":           window,
                 }
 
@@ -688,6 +832,37 @@ def player_history(player_id):
             sid = r["season_id"]
             selected_by_season.setdefault(sid, []).append(_row_to_dict(r))
 
+    # Pre-fetch watch_kyle per year for this player (for playoff seasons)
+    watch_kyle_per_year: dict[int, float] = {}
+    watch_rows = conn.execute(
+        """
+        SELECT
+            g.game_year,
+            COUNT(DISTINCT wgp.game_id) AS total_watched,
+            COUNT(DISTINCT CASE WHEN g.best_player_id = ? THEN g.id END) AS best_count
+        FROM watched_game_players wgp
+        JOIN watched_playoff_games g ON g.id = wgp.game_id
+        WHERE wgp.player_id = ?
+        GROUP BY g.game_year
+        """,
+        (player_id, player_id),
+    ).fetchall()
+    for r in watch_rows:
+        total = r["total_watched"] or 0
+        best  = r["best_count"] or 0
+        if total > 0:
+            pct = best / total
+            watch_kyle_per_year[r["game_year"]] = round(pct * 2 - 1, 3)
+
+    # Pre-fetch watch_kyle maps for all playoff season years (for selected-set bounds)
+    playoff_years = list({
+        r["season_year"] for r in season_rows
+        if r["season_type"] == "playoffs"
+    })
+    watch_map_by_year: dict[int, dict] = {}
+    for yr in playoff_years:
+        watch_map_by_year[yr] = _get_watch_kyle_by_player(conn, yr)
+
     conn.close()
 
     # Scrape birthdate on first visit if we have a bbref_url but no date yet
@@ -719,11 +894,19 @@ def player_history(player_id):
         if selected:
             exclude    = {"minutes"} if season_type == "playoffs" else set()
             sel_dicts  = [dict(r) for r in selected]
+            # Attach watch_kyle to selected-set dicts for playoff bounds
+            if season_type == "playoffs":
+                watch_map = watch_map_by_year.get(season_year, {})
+                for d in sel_dicts:
+                    wk = watch_map.get(d["player_id"])
+                    d["watch_kyle"] = wk["watch_kyle"] if wk else None
             kyle._add_derived(sel_dicts)
             bounds     = kyle.compute_bounds(sel_dicts, exclude_fields=exclude)
             target     = dict(row_dict)
             target["player_id"] = player_id
             target["name"]      = player_dict["name"]
+            if season_type == "playoffs":
+                target["watch_kyle"] = watch_kyle_per_year.get(season_year)
             kyle._add_derived([target])
             kyle._apply_bounds([target], bounds, clamp=True)
             kyle_rating = target.get("kyle_rating")
@@ -978,18 +1161,125 @@ def delete_watched_game(game_id):
 @app.route("/api/watched_games/best_player_leaderboard")
 def best_player_leaderboard():
     conn = get_conn()
+
+    # Fetch per-player, per-year weighted counts
     rows = conn.execute(
         """
-        SELECT p.id AS player_id, p.name,
-               COUNT(*) AS best_player_count
-        FROM watched_playoff_games g
-        JOIN players p ON p.id = g.best_player_id
-        GROUP BY g.best_player_id
-        ORDER BY best_player_count DESC, p.name
+        SELECT
+            wgp.player_id,
+            p.name,
+            g.game_year,
+            COUNT(DISTINCT wgp.game_id) AS total_watched,
+            SUM(CASE
+                WHEN g.best_player_id = wgp.player_id THEN
+                    CASE g.round
+                        WHEN 'First Round'       THEN 1
+                        WHEN 'Second Round'      THEN 2
+                        WHEN 'Conference Finals' THEN 3
+                        WHEN 'NBA Finals'        THEN 4
+                        ELSE 1
+                    END
+                ELSE 0
+            END) AS weighted_best
+        FROM watched_game_players wgp
+        JOIN players p ON p.id = wgp.player_id
+        JOIN watched_playoff_games g ON g.id = wgp.game_id
+        GROUP BY wgp.player_id, g.game_year
+        """
+    ).fetchall()
+
+    # Fetch per-player, per-round unweighted counts (across all years)
+    round_rows = conn.execute(
+        """
+        SELECT
+            wgp.player_id,
+            g.round,
+            COUNT(DISTINCT wgp.game_id) AS games_in_round,
+            SUM(CASE WHEN g.best_player_id = wgp.player_id THEN 1 ELSE 0 END) AS best_in_round
+        FROM watched_game_players wgp
+        JOIN watched_playoff_games g ON g.id = wgp.game_id
+        GROUP BY wgp.player_id, g.round
         """
     ).fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+
+    # Build round lookup: {player_id: {round_label: {"best": n, "games": m}}}
+    from collections import defaultdict
+    ROUND_KEY = {
+        'First Round':       'r1',
+        'Second Round':      'r2',
+        'Conference Finals': 'r3',
+        'NBA Finals':        'r4',
+    }
+    player_round_data = defaultdict(lambda: {k: {"best": 0, "games": 0} for k in ('r1','r2','r3','r4')})
+    for rr in round_rows:
+        key = ROUND_KEY.get(rr["round"])
+        if key:
+            player_round_data[rr["player_id"]][key]["best"]  = rr["best_in_round"]
+            player_round_data[rr["player_id"]][key]["games"] = rr["games_in_round"]
+
+    # Build per-year raw scores per player
+    # year_data: {year: {player_id: raw_score}}
+    from collections import defaultdict
+    year_player_raw = defaultdict(dict)   # year -> player_id -> raw
+    year_player_info = {}                  # player_id -> name
+    player_year_data = defaultdict(lambda: {"total_watched_games": 0, "weighted_best_total": 0.0})
+
+    for r in rows:
+        M = r["total_watched"] or 0
+        N = r["weighted_best"] or 0.0
+        raw = N / M if M > 0 else 0.0
+        year_player_raw[r["game_year"]][r["player_id"]] = raw
+        year_player_info[r["player_id"]] = r["name"]
+        player_year_data[r["player_id"]]["total_watched_games"] += M
+        player_year_data[r["player_id"]]["weighted_best_total"] += N
+
+    # Compute per-year max_raw for normalisation
+    year_max_raw = {yr: max(raws.values(), default=0.0) for yr, raws in year_player_raw.items()}
+
+    # Sum normalised watch_kyle per player across years
+    player_watch_kyle_sum = defaultdict(float)
+    player_year_count = defaultdict(int)
+    for yr, player_raws in year_player_raw.items():
+        max_raw = year_max_raw[yr]
+        for pid, raw in player_raws.items():
+            M_yr = next(
+                (r["total_watched"] for r in rows
+                 if r["player_id"] == pid and r["game_year"] == yr), 0
+            )
+            if M_yr == 0:
+                continue
+            wk = round((raw / max_raw) * 2 - 1, 3) if max_raw > 0 else 0.0
+            player_watch_kyle_sum[pid] += wk
+            player_year_count[pid] += 1
+
+    result = []
+    for pid, name in year_player_info.items():
+        total = player_year_data[pid]["total_watched_games"]
+        weighted_best = player_year_data[pid]["weighted_best_total"]
+        watch_kyle_sum = player_watch_kyle_sum.get(pid, 0.0)
+        rd = player_round_data[pid]
+
+        def round_cell(key):
+            b = rd[key]["best"]
+            g = rd[key]["games"]
+            return f"{b}/{g}" if g > 0 else "—"
+
+        result.append({
+            "player_id":           pid,
+            "name":                name,
+            "total_watched_games": total,
+            "best_player_count":   weighted_best,
+            "watch_kyle":          round(watch_kyle_sum, 3),
+            "best_player_pct":     round(weighted_best / total, 1) if total > 0 else None,
+            "r1":                  round_cell("r1"),
+            "r2":                  round_cell("r2"),
+            "r3":                  round_cell("r3"),
+            "r4":                  round_cell("r4"),
+        })
+
+    result.sort(key=lambda x: (x["best_player_pct"] or 0), reverse=True)
+    return jsonify(result)
 
 
 @app.route("/api/players_for_year")
@@ -1054,10 +1344,56 @@ def player_watch_log(player_id):
     ).fetchall()
 
     conn.close()
+
+    # Gather all years this player appeared in
+    all_years = set()
+    for g in best_games:
+        all_years.add(g["game_year"])
+    for g in important_games:
+        all_years.add(g["game_year"])
+
+    # Reuse _get_watch_kyle_by_player for correct round-weighted, year-normalised scores
+    conn2 = get_conn()
+    watch_by_year = {}
+    for yr in sorted(all_years):
+        yr_map = _get_watch_kyle_by_player(conn2, yr)
+        entry = yr_map.get(player_id)
+        if entry:
+            watch_by_year[yr] = {
+                "best_count":    entry["best_count"],
+                "total_watched": entry["total_watched"],
+                "raw_score":     entry["raw_score"],
+                "watch_kyle":    entry["watch_kyle"],
+                "best_pct":      round(entry["raw_score"] * 100, 1),
+            }
+        else:
+            # Player appeared in watched games this year but not in the map
+            watch_by_year[yr] = {
+                "best_count": 0, "total_watched": 0,
+                "raw_score": 0.0, "watch_kyle": None, "best_pct": 0.0,
+            }
+    conn2.close()
+
+    # Overall summary
+    total_watched_overall = sum(v["total_watched"] for v in watch_by_year.values())
+    total_best_overall    = best_count  # unweighted count from DB
+    if total_watched_overall > 0:
+        overall_watch_kyle = round(sum(
+            v["watch_kyle"] for v in watch_by_year.values() if v["watch_kyle"] is not None
+        ), 3)
+        overall_best_pct   = round(total_best_overall / total_watched_overall * 100, 1)
+    else:
+        overall_watch_kyle = 0.0
+        overall_best_pct   = None
+
     return jsonify({
-        "best_player_count": best_count,
-        "best_player_games": [dict(r) for r in best_games],
+        "best_player_count":      best_count,
+        "best_player_games":      [dict(r) for r in best_games],
         "important_player_games": [dict(r) for r in important_games],
+        "watch_by_year":          watch_by_year,
+        "total_watched":          total_watched_overall,
+        "best_player_pct":        overall_best_pct,
+        "watch_kyle":             overall_watch_kyle,
     })
 
 

@@ -327,6 +327,10 @@ td.name-cell {
 /* KYLE rating */
 td.kyle-cell .norm-val { font-size: 1.05rem; color: #f78166; }
 
+/* Watch-log leaderboard K.Y.L.E. column */
+td.kyle-pos { color: #3fb950; font-weight: 600; }
+td.kyle-neg { color: #f85149; font-weight: 600; }
+
 /* Cumulative total column */
 td.kyle-cell.cumulative-total .norm-val { font-size: 1.15rem; color: #ffa657; font-weight: 700; }
 
@@ -579,6 +583,13 @@ a.player-link:hover {
 .full-width textarea { resize: vertical; }
 .modal-actions { display: flex; gap: 12px; margin-top: 18px; }
 .muted-text { font-size: .78rem; color: #8b949e; }
+
+/* Watch-games best/total sub-line */
+.watch-games-sub {
+  font-size: 0.75rem;
+  color: #8b949e;
+  margin-top: 2px;
+}
 
 /* Watch log section on player page */
 .watchlog-hero {

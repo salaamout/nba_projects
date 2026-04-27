@@ -14,6 +14,8 @@ function updateColumnDefs() {
     { key: "regular_total",     label: "Regular K.Y.L.E.",         isKyle:  true },
     { key: "playoffs_total",    label: "Playoffs K.Y.L.E.",        isKyle:  true },
     { key: "best_window_total", label: `Best ${windowSize}-Yr Total`, isTotal: true },
+    { key: "watch_kyle_total",  label: "Watch K.Y.L.E.",           isWatch: true },
+    { key: "playoff_games",     label: "Playoff Games",            isPlayoffGames: true },
   ];
 }
 
@@ -146,6 +148,19 @@ function buildRow(player, rank) {
       div.className   = "norm-val";
       div.textContent = fmt(player.best_window_total);
       td.appendChild(div);
+
+    } else if (col.isWatch) {
+      td.className = "kyle-cell";
+      const div = document.createElement("div");
+      div.className   = "norm-val";
+      div.textContent = fmt(player.watch_kyle_total);
+      td.appendChild(div);
+
+    } else if (col.isPlayoffGames) {
+      td.className = "kyle-cell";
+      const watched = player.playoff_watched ?? 0;
+      const played  = player.playoff_played  ?? 0;
+      td.textContent = `${watched}/${played}`;
 
     } else {
       /* regular_total / playoffs_total */

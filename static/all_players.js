@@ -19,6 +19,7 @@ const COLUMNS = [
   { key: "on_off_diff",     label: "On/Off Diff",    sub: ""                              },
   { key: "bpm",             label: "BPM",            sub: ""                              },
   { key: "defense",         label: "Defense",        sub: "manual"                        },
+  { key: "watch_kyle",      label: "Watch K.Y.L.E.", sub: "normalized",     playoffsOnly: true, isWatch: true },
   { key: "kyle_rating",     label: "K.Y.L.E.",       sub: "rating",         isKyle: true  },
   { key: "_add",            label: "",               sub: "",               isAdd: true   },
 ];
@@ -184,6 +185,25 @@ function buildRow(player) {
       a.href = `/player/${player.player_id}`;
       a.textContent = player.name;
       td.appendChild(a);
+
+    } else if (col.isWatch) {
+      const normVal = player.watch_kyle;
+      const rawCount = player.watch_best_count;
+      const total = player.watch_total_watched;
+      if (normVal !== null && normVal !== undefined) {
+        const norm = document.createElement("div");
+        norm.className = "norm-val " + colorClass(normVal);
+        norm.textContent = fmt(normVal);
+        td.appendChild(norm);
+        if (rawCount !== null && rawCount !== undefined && total !== null && total !== undefined) {
+          const raw = document.createElement("div");
+          raw.className = "raw-val";
+          raw.textContent = `${rawCount}/${total}`;
+          td.appendChild(raw);
+        }
+      } else {
+        td.textContent = "—";
+      }
 
     } else if (col.isKyle) {
       td.className = "kyle-cell";

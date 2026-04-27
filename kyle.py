@@ -142,6 +142,13 @@ def _apply_bounds(rows, bounds, clamp):
             else:
                 row["on_off_diff_norm"] = None
 
+        # Watch K.Y.L.E. contribution (already normalised to -1..+1)
+        wk = _safe(row.get("watch_kyle"))
+        if wk is not None:
+            row["watch_kyle_norm"] = round(wk, 4)
+            total += wk
+            has_any = True
+
         row["kyle_rating"] = round(total, 4) if has_any else None
 
 

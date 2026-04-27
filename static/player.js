@@ -5,7 +5,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     showError("Invalid player URL.");
     return;
   }
-  await Promise.all([loadPlayer(playerId), loadWatchLog(playerId)]);
+  // Load watch log first so _watchByYear is ready for renderProfile
+  await loadWatchLog(playerId);
+  await loadPlayer(playerId);
 });
 
 function getPlayerIdFromUrl() {
@@ -77,14 +79,16 @@ function renderSummary(years, byYear) {
 
     const tr = document.createElement("tr");
 
-    // Season label (use whichever row we have)
-    const labelSeason = reg || play;
     td(tr, year);                                                        // Season year
     td(tr, reg?.age ?? play?.age ?? "—");                                // Age
     td(tr, reg  ? fmtMinutes(reg.minutes)     : "—");                   // Reg minutes
     kyleTd(tr,  reg  ? reg.kyle_rating        : null);                  // Reg K.Y.L.E.
     td(tr, play ? (play.playoff_games ?? "—") : "—");                   // Playoff GP
     kyleTd(tr,  play ? play.kyle_rating        : null);                 // Playoff K.Y.L.E.
+
+    // Watch K.Y.L.E. for this year
+    const wyl = _watchByYear[year];
+    watchKyleTd(tr, wyl ? wyl.watch_kyle : null, wyl ? wyl.best_pct : null, wyl ? wyl.total_watched : 0);
 
     tbody.appendChild(tr);
   }
@@ -169,6 +173,22 @@ function kyleTd(tr, val) {
   return cell;
 }
 
+function watchKyleTd(tr, kyleVal, pct, totalWatched) {
+  const cell = document.createElement("td");
+  if (totalWatched === 0 || kyleVal === null || kyleVal === undefined) {
+    cell.textContent = "—";
+    cell.style.color = "#8b949e";
+  } else {
+    const score = parseFloat(kyleVal);
+    const pctStr = pct != null ? pct.toFixed(1) + "%" : "—";
+    cell.textContent = (score >= 0 ? "+" : "") + score.toFixed(3);
+    cell.title = `Best player in ${pct != null ? pct.toFixed(1) : "?"}% of ${totalWatched} watched game${totalWatched === 1 ? "" : "s"}`;
+    cell.className = score > 0 ? "kyle-pos" : score < 0 ? "kyle-neg" : "";
+  }
+  tr.appendChild(cell);
+  return cell;
+}
+
 function fmtMinutes(val) {
   if (val === null || val === undefined) return "—";
   return Math.round(parseFloat(val)).toLocaleString();
@@ -192,9 +212,12 @@ async function apiFetch(url, options = {}) {
 }
 
 /* ── Watch Log ─────────────────────────────────────────────────── */
+let _watchByYear = {};   // populated by loadWatchLog, used by renderSummary
+
 async function loadWatchLog(playerId) {
   try {
     const data = await apiFetch(`/api/player/${playerId}/watch_log`);
+    _watchByYear = data.watch_by_year || {};
     renderWatchLog(data);
   } catch (e) {
     // silently fail — watch log is optional
@@ -204,13 +227,26 @@ async function loadWatchLog(playerId) {
 function renderWatchLog(data) {
   const section = document.getElementById("section-watchlog");
 
-  const { best_player_count, best_player_games, important_player_games } = data;
+  const { best_player_count, best_player_games, important_player_games,
+          total_watched, best_player_pct, watch_kyle } = data;
 
   const heroEl = document.getElementById("watchlog-best-count");
   if (best_player_count > 0) {
     heroEl.textContent = `🏆 Best Player in ${best_player_count} watched game${best_player_count === 1 ? "" : "s"}`;
   } else {
     heroEl.textContent = "No games as Best Player yet.";
+  }
+
+  const kyleEl = document.getElementById("watchlog-watch-kyle");
+  if (total_watched > 0 && watch_kyle != null) {
+    const score   = parseFloat(watch_kyle);
+    const pctStr  = best_player_pct != null ? best_player_pct.toFixed(1) + "%" : "—";
+    const scoreStr = (score >= 0 ? "+" : "") + score.toFixed(3);
+    kyleEl.textContent = `Watch K.Y.L.E.: ${scoreStr}  (${pctStr} best across ${total_watched} game${total_watched === 1 ? "" : "s"} watched)`;
+    kyleEl.style.color = score > 0 ? "#3fb950" : score < 0 ? "#f85149" : "";
+  } else {
+    kyleEl.textContent = "Watch K.Y.L.E.: 0.000  (not watched)";
+    kyleEl.style.color = "#8b949e";
   }
 
   if (best_player_games.length) {
@@ -257,7 +293,7 @@ function renderWatchLog(data) {
     }
   }
 
-  if (best_player_count > 0 || best_player_games.length || important_player_games.length) {
+  if (best_player_count > 0 || best_player_games.length || important_player_games.length || total_watched > 0) {
     section.classList.remove("hidden");
   }
 }
