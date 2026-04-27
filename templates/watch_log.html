@@ -25,6 +25,11 @@
     <!-- Leaderboard -->
     <section class="profile-section" id="section-leaderboard">
       <h3 class="section-title">Best Player Leaderboard</h3>
+      <div class="wl-filters">
+        <label>Min Games Watched <input type="number" id="lb-min-games" placeholder="0" min="0" value="10" style="width:70px;" /></label>
+        <button class="btn" id="btn-lb-filter">Filter</button>
+        <button class="btn" id="btn-lb-clear">Clear</button>
+      </div>
       <div class="table-wrap">
         <table class="profile-table" id="leaderboard-table">
           <thead>

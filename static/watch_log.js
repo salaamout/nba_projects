@@ -31,38 +31,47 @@ function showMsg(text, isError = false) {
 }
 
 /* ── Leaderboard ───────────────────────────────────────────────────── */
+let _leaderboard = [];
+
 async function loadLeaderboard() {
   const tbody = document.getElementById("leaderboard-body");
   try {
-    const rows = await apiFetch("/api/watched_games/best_player_leaderboard");
-    tbody.innerHTML = "";
-    if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#8b949e;">No data yet</td></tr>';
-      return;
-    }
-    rows.forEach((r, i) => {
-      const pctStr   = r.best_player_pct != null ? r.best_player_pct.toFixed(1) : "—";
-      const kyle     = r.watch_kyle;
-      const kyleStr  = kyle != null ? (kyle >= 0 ? "+" : "") + kyle.toFixed(3) : "0.000";
-      const kyleClass = kyle > 0 ? "kyle-pos" : kyle < 0 ? "kyle-neg" : "";
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${i + 1}</td>
-        <td><a href="/player/${r.player_id}" class="player-link">${esc(r.name)}</a></td>
-        <td>${r.r1}</td>
-        <td>${r.r2}</td>
-        <td>${r.r3}</td>
-        <td>${r.r4}</td>
-        <td>${r.best_player_count}</td>
-        <td>${r.total_watched_games}</td>
-        <td>${pctStr}</td>
-        <td class="${kyleClass}">${kyleStr}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+    _leaderboard = await apiFetch("/api/watched_games/best_player_leaderboard");
+    renderLeaderboard();
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="10" style="color:#f85149;">Error: ${esc(e.message)}</td></tr>`;
   }
+}
+
+function renderLeaderboard() {
+  const tbody = document.getElementById("leaderboard-body");
+  const minGames = parseInt(document.getElementById("lb-min-games").value) || 0;
+  const rows = _leaderboard.filter(r => r.total_watched_games >= minGames);
+  tbody.innerHTML = "";
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#8b949e;">No data yet</td></tr>';
+    return;
+  }
+  rows.forEach((r, i) => {
+    const pctStr   = r.best_player_pct != null ? r.best_player_pct.toFixed(1) : "—";
+    const kyle     = r.watch_kyle;
+    const kyleStr  = kyle != null ? (kyle >= 0 ? "+" : "") + kyle.toFixed(3) : "0.000";
+    const kyleClass = kyle > 0 ? "kyle-pos" : kyle < 0 ? "kyle-neg" : "";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td><a href="/player/${r.player_id}" class="player-link">${esc(r.name)}</a></td>
+      <td>${r.r1}</td>
+      <td>${r.r2}</td>
+      <td>${r.r3}</td>
+      <td>${r.r4}</td>
+      <td>${r.best_player_count}</td>
+      <td>${r.total_watched_games}</td>
+      <td>${pctStr}</td>
+      <td class="${kyleClass}">${kyleStr}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 /* ── Game Log ──────────────────────────────────────────────────────── */
@@ -158,6 +167,12 @@ function getCurrentFilters() {
 }
 
 function bindUI() {
+  document.getElementById("btn-lb-filter").addEventListener("click", renderLeaderboard);
+  document.getElementById("btn-lb-clear").addEventListener("click", () => {
+    document.getElementById("lb-min-games").value = "";
+    renderLeaderboard();
+  });
+
   document.getElementById("btn-filter").addEventListener("click", () => {
     loadGames({
       year:       document.getElementById("filter-year").value || undefined,
