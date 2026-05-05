@@ -608,3 +608,82 @@ a.player-link:hover {
 }
 .player-link { color: #58a6ff; text-decoration: none; }
 .player-link:hover { text-decoration: underline; }
+
+/* ── Suggest Game card ────────────────────────────────── */
+.btn-suggest {
+  background: #238636;
+  color: #fff;
+  border: 1px solid #2ea043;
+}
+.btn-suggest:hover { background: #2ea043; }
+
+.suggest-card {
+  position: relative;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 12px 0 0;
+  max-width: 860px;
+}
+.suggest-card.hidden { display: none; }
+
+.suggest-dismiss {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 1rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.suggest-dismiss:hover { color: #e6edf3; }
+
+.suggest-found { display: block; }
+
+.suggest-pair {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-bottom: 10px;
+  font-size: 1.05rem;
+}
+.suggest-peak {
+  font-size: .82rem;
+  color: #8b949e;
+}
+.suggest-vs {
+  font-size: .9rem;
+  color: #8b949e;
+  padding: 0 2px;
+}
+
+.suggest-game-info {
+  margin-bottom: 6px;
+  font-size: .95rem;
+}
+.suggest-game-label {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #8b949e;
+  margin-right: 6px;
+}
+
+.suggest-pair-score {
+  font-size: .82rem;
+  color: #8b949e;
+  margin-bottom: 10px;
+}
+
+.suggest-watchlog {
+  font-size: .85rem;
+  padding: 4px 10px;
+}
+
+.suggest-error { color: #f78166; }
+.suggest-none  { color: #8b949e; font-style: italic; }
+

@@ -38,10 +38,15 @@
       <a href="/all" class="btn-nav">All Players</a>
       <a href="/cumulative" class="btn-nav">Cumulative</a>
       <a href="/watch_log" class="btn-nav">Watch Log</a>
+      <button id="suggest-btn" class="btn-nav btn-suggest">🎬 Suggest a Game</button>
     </div>
   </header>
 
   <main>
+    <div id="suggest-card" class="suggest-card hidden">
+      <button id="suggest-dismiss" class="suggest-dismiss" title="Dismiss">✕</button>
+      <div id="suggest-content"></div>
+    </div>
     <div class="all-players-intro">
       Best consecutive N-year K.Y.L.E. run for each player. Regular season and
       playoff ratings for each year are combined (positive <em>and</em> negative),

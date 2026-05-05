@@ -79,6 +79,260 @@ def _to_nba_abbr(bbref_abbr: str) -> str:
     return _BBREF_TO_NBA_ABBR.get(bbref_abbr, bbref_abbr)
 
 
+# ---------------------------------------------------------------------------
+# Abbreviation → display team name mapping (for suggest-game cross-reference)
+# ---------------------------------------------------------------------------
+# Maps team abbreviations (as stored in player_game_appearances) to the full
+# team name used in watched_playoff_games.  Historical franchises use the name
+# that was correct at the time; callers should pass season_year to pick the
+# right name where a franchise relocated.
+_ABBR_TO_TEAM_NAME_BY_YEAR: dict[str, list[tuple[int, int, str]]] = {
+    # abbr: [(start_year, end_year, name), ...]  — end_year is inclusive last season
+    "ATL": [(1969, 2099, "Atlanta Hawks")],
+    "BOS": [(1947, 2099, "Boston Celtics")],
+    "BRK": [(2013, 2099, "Brooklyn Nets")],
+    "NJN": [(1977, 2012, "New Jersey Nets")],
+    "NYK": [(1947, 2099, "New York Knicks")],
+    "PHI": [(1964, 2099, "Philadelphia 76ers")],
+    "PHL": [(1964, 2099, "Philadelphia 76ers")],
+    "TOR": [(1996, 2099, "Toronto Raptors")],
+    "CHI": [(1967, 2099, "Chicago Bulls")],
+    "CLE": [(1971, 2099, "Cleveland Cavaliers")],
+    "DET": [(1958, 2099, "Detroit Pistons")],
+    "IND": [(1977, 2099, "Indiana Pacers")],
+    "MIL": [(1969, 2099, "Milwaukee Bucks")],
+    "DAL": [(1981, 2099, "Dallas Mavericks")],
+    "HOU": [(1972, 2099, "Houston Rockets")],
+    "MEM": [(2002, 2099, "Memphis Grizzlies")],
+    "VAN": [(1996, 2001, "Vancouver Grizzlies")],
+    "NOP": [(2014, 2099, "New Orleans Pelicans")],
+    "NOH": [(2003, 2013, "New Orleans Hornets")],
+    "NOK": [(2006, 2007, "New Orleans/Oklahoma City Hornets")],
+    "SAS": [(1977, 2099, "San Antonio Spurs")],
+    "SAN": [(1977, 2099, "San Antonio Spurs")],
+    "OKC": [(2009, 2099, "Oklahoma City Thunder")],
+    "SEA": [(1968, 2008, "Seattle SuperSonics")],
+    "DEN": [(1977, 2099, "Denver Nuggets")],
+    "MIN": [(1990, 2099, "Minnesota Timberwolves")],
+    "UTA": [(1980, 2099, "Utah Jazz")],
+    "UTH": [(1980, 2099, "Utah Jazz")],
+    "NOJ": [(1975, 1979, "New Orleans Jazz")],
+    "POR": [(1971, 2099, "Portland Trail Blazers")],
+    "GOS": [(1972, 2099, "Golden State Warriors")],
+    "GSW": [(1972, 2099, "Golden State Warriors")],
+    "LAC": [(1985, 2099, "Los Angeles Clippers")],
+    "SDC": [(1979, 1984, "San Diego Clippers")],
+    "LAL": [(1961, 2099, "Los Angeles Lakers")],
+    "MNL": [(1949, 1960, "Minneapolis Lakers")],
+    "PHX": [(1969, 2099, "Phoenix Suns")],
+    "PHO": [(1969, 2099, "Phoenix Suns")],
+    "SAC": [(1986, 2099, "Sacramento Kings")],
+    "KCK": [(1976, 1985, "Kansas City Kings")],
+    "CIN": [(1958, 1972, "Cincinnati Royals")],
+    "WSB": [(1974, 1997, "Washington Bullets")],
+    "WAS": [(1998, 2099, "Washington Wizards")],
+    "MIA": [(1989, 2099, "Miami Heat")],
+    "ORL": [(1990, 2099, "Orlando Magic")],
+    "CHA": [(1989, 2002, "Charlotte Hornets"), (2015, 2099, "Charlotte Hornets")],
+    "CHH": [(1989, 2002, "Charlotte Hornets")],
+    "CHO": [(2015, 2099, "Charlotte Hornets")],
+    "BUF": [(1971, 1978, "Buffalo Braves")],
+    "CHP": [(1950, 1952, "Chicago Stags")],
+    "BAL": [(1964, 1973, "Baltimore Bullets")],
+    "CAP": [(1974, 1974, "Capital Bullets")],
+}
+
+# Flat fallback dict for abbrs with only one name (most common case)
+_ABBR_TO_TEAM_NAME: dict[str, str] = {
+    abbr: entries[0][2]
+    for abbr, entries in _ABBR_TO_TEAM_NAME_BY_YEAR.items()
+    if len(entries) == 1
+}
+
+
+def abbr_to_team_name(abbr: str, season_year: int | None = None) -> str | None:
+    """Return the full team name for a given abbreviation, optionally checking season_year."""
+    entries = _ABBR_TO_TEAM_NAME_BY_YEAR.get(abbr.upper())
+    if not entries:
+        return None
+    if season_year is None:
+        return entries[0][2]
+    for start, end, name in entries:
+        if start <= season_year <= end:
+            return name
+    return entries[-1][2]
+
+
+# Nickname used when logging games manually in watched_playoff_games
+_ABBR_TO_NICKNAME: dict[str, str] = {
+    "ATL": "Hawks",
+    "BOS": "Celtics",
+    "BRK": "Nets",
+    "NJN": "Nets",
+    "NYK": "Knicks",
+    "PHI": "76ers",
+    "PHL": "76ers",
+    "TOR": "Raptors",
+    "CHI": "Bulls",
+    "CLE": "Cavs",
+    "DET": "Pistons",
+    "IND": "Pacers",
+    "MIL": "Bucks",
+    "DAL": "Mavs",
+    "HOU": "Rockets",
+    "MEM": "Grizzlies",
+    "VAN": "Grizzlies",
+    "NOP": "Pels",
+    "NOH": "Pels",
+    "NOK": "Pels",
+    "SAS": "Spurs",
+    "SAN": "Spurs",
+    "OKC": "Thunder",
+    "SEA": "Sonics",
+    "DEN": "Nuggets",
+    "MIN": "Wolves",
+    "UTA": "Jazz",
+    "UTH": "Jazz",
+    "NOJ": "Jazz",
+    "POR": "Blazers",
+    "GOS": "Warriors",
+    "GSW": "Warriors",
+    "LAC": "Clippers",
+    "SDC": "Clippers",
+    "LAL": "Lakers",
+    "MNL": "Lakers",
+    "PHX": "Suns",
+    "PHO": "Suns",
+    "SAC": "Kings",
+    "KCK": "Kings",
+    "CIN": "Kings",
+    "WSB": "Wizards",
+    "WAS": "Wizards",
+    "MIA": "Heat",
+    "ORL": "Magic",
+    "CHA": "Hornets",
+    "CHH": "Hornets",
+    "CHO": "Hornets",
+    "BUF": "Braves",
+}
+
+
+def abbr_to_team_name_variants(abbr: str, season_year: int | None = None) -> list[str]:
+    """Return all known name variants for a team abbreviation.
+
+    Includes the full name, the abbreviation itself, and the short nickname
+    used in watched_playoff_games (e.g. 'Spurs', 'Cavs').  This is used when
+    cross-referencing against the watch log, which may store any of these forms.
+    """
+    variants: list[str] = []
+    full = abbr_to_team_name(abbr, season_year)
+    if full:
+        variants.append(full)
+    a = abbr.upper()
+    if a not in variants:
+        variants.append(a)
+    nick = _ABBR_TO_NICKNAME.get(a)
+    if nick and nick not in variants:
+        variants.append(nick)
+    # Also include 'Sixers' as an alias for 76ers
+    if nick == "76ers" and "Sixers" not in variants:
+        variants.append("Sixers")
+    return variants
+
+
+# ---------------------------------------------------------------------------
+# BBRef playoff gamelog fallback (for pre-nba_api era players)
+# ---------------------------------------------------------------------------
+
+def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: int, conn) -> set[str]:
+    """
+    Fetch a player's BBRef playoff gamelog for season_year and cache into
+    player_game_appearances.  Returns set of game_dates.
+
+    bbref_url example: '/players/j/jordami01.html'
+    BBRef gamelog URL:  '/players/j/jordami01/gamelog/1991'  (for the 1990-91 season)
+    """
+    # Check cache first — skip re-fetch only if all cached rows already have opp_abbr
+    null_count = conn.execute(
+        "SELECT COUNT(*) FROM player_game_appearances "
+        "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND opp_abbr IS NULL",
+        (player_id, season_year),
+    ).fetchone()[0]
+    all_cached = conn.execute(
+        "SELECT game_date FROM player_game_appearances "
+        "WHERE player_id=? AND season_year=? AND season_type='playoffs'",
+        (player_id, season_year),
+    ).fetchall()
+    if all_cached and null_count == 0:
+        return {r["game_date"] for r in all_cached}
+
+    # Build gamelog URL from bbref_url
+    # /players/j/jordami01.html  →  /players/j/jordami01/gamelog/{year}
+    bbref_id = bbref_url.rstrip("/").split("/")[-1].replace(".html", "")
+    first_letter = bbref_id[0]
+    gamelog_url = f"{BASE_URL}/players/{first_letter}/{bbref_id}/gamelog/{season_year}"
+
+    try:
+        soup = _get(gamelog_url)
+        time.sleep(2)
+    except Exception as exc:
+        logger.warning("BBRef gamelog fetch failed for %s year=%s: %s", bbref_url, season_year, exc)
+        return set()
+
+    try:
+        rows = _parse_table(soup, "pgl_basic_playoffs")
+    except ValueError:
+        logger.info("No pgl_basic_playoffs table for %s year=%s", bbref_id, season_year)
+        return set()
+
+    cur = conn.cursor()
+    dates: set[str] = set()
+    for row in rows:
+        date_str = row.get("date_game", "").strip()
+        if not date_str or date_str.lower() in ("", "date"):
+            continue
+        # BBRef dates look like "1991-05-25" or "May 25, 1991"
+        game_date = None
+        try:
+            # Try ISO format first
+            datetime.strptime(date_str, "%Y-%m-%d")
+            game_date = date_str
+        except ValueError:
+            try:
+                dt = datetime.strptime(date_str, "%B %d, %Y")
+                game_date = dt.strftime("%Y-%m-%d")
+            except ValueError:
+                logger.debug("Unparseable date '%s' in BBRef gamelog %s %s", date_str, bbref_id, season_year)
+                continue
+
+        team_abbr = (row.get("team_id") or row.get("team_name_abbr") or "").strip()
+        opp_abbr  = (row.get("opp_id")  or row.get("opp") or "").strip() or None
+        inactive = row.get("reason", "").strip()
+        if inactive.lower() in ("inactive", "did not play", "dnp", "not with team", "suspended"):
+            continue
+        mp = row.get("mp", "").strip()
+        if not mp or mp == "0:00":
+            continue
+
+        cur.execute(
+            "INSERT OR IGNORE INTO player_game_appearances "
+            "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date) VALUES (?,?,?,?,?,?)",
+            (player_id, season_year, "playoffs", team_abbr, opp_abbr, game_date),
+        )
+        # Backfill opp_abbr for any existing row that was cached without it
+        if opp_abbr:
+            cur.execute(
+                "UPDATE player_game_appearances SET opp_abbr=? "
+                "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND game_date=? AND opp_abbr IS NULL",
+                (opp_abbr, player_id, season_year, game_date),
+            )
+        dates.add(game_date)
+
+    conn.commit()
+    logger.info("BBRef playoff gamelog: cached %d appearances for player_id=%s year=%s", len(dates), player_id, season_year)
+    return dates
+
+
 def _nba_season_str(season_year: int) -> str:
     """Convert DB season_year (ending year) to nba_api season string, e.g. 1978 → '1977-78'."""
     return f"{season_year - 1}-{str(season_year)[-2:]}"
@@ -359,20 +613,53 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
             return _p_mode_cache.get((season_year, season_type), {})
         return {}  # T-mode callers read from DB directly
 
+    # stats.nba.com LeagueGameLog is unreliable for seasons before 2000 —
+    # the endpoint consistently returns an empty body for old data.
+    if season_year < 2000:
+        logger.info(
+            "Skipping LeagueGameLog for season=%s (pre-2000, use BBRef instead)",
+            season_year,
+        )
+        _fetched_seasons.add(cache_key)
+        if player_or_team == "P":
+            _p_mode_cache[(season_year, season_type)] = {}
+            return {}
+        return {}
+
     logger.info(
         "Fetching LeagueGameLog season=%s type=%s mode=%s from stats.nba.com",
         season_year, season_type, player_or_team,
     )
     time.sleep(2)
 
-    log = _leaguegamelog.LeagueGameLog(
-        season=_nba_season_str(season_year),
-        season_type_all_star=_nba_season_type(season_type),
-        player_or_team_abbreviation=player_or_team,
-        league_id="00",
-        timeout=60,
-    )
-    df = log.league_game_log.get_data_frame()
+    df = None
+    for _attempt in range(3):
+        try:
+            log = _leaguegamelog.LeagueGameLog(
+                season=_nba_season_str(season_year),
+                season_type_all_star=_nba_season_type(season_type),
+                player_or_team_abbreviation=player_or_team,
+                league_id="00",
+                timeout=60,
+            )
+            df = log.league_game_log.get_data_frame()
+            break
+        except Exception as exc:
+            logger.warning(
+                "LeagueGameLog attempt %d failed for %s %s mode=%s: %s",
+                _attempt + 1, season_year, season_type, player_or_team, exc,
+            )
+            if _attempt < 2:
+                time.sleep(5 * (_attempt + 1))
+            else:
+                logger.error(
+                    "All retries exhausted for LeagueGameLog %s %s mode=%s",
+                    season_year, season_type, player_or_team,
+                )
+                if player_or_team == "P":
+                    _p_mode_cache[(season_year, season_type)] = {}
+                    return {}
+                return {}
     _fetched_seasons.add(cache_key)
 
     if df.empty:
@@ -408,8 +695,12 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
             nba_pid = int(row["PLAYER_ID"])
             game_date = str(row["GAME_DATE"])[:10]
             team_abbr = str(row["TEAM_ABBREVIATION"])
+            # MATCHUP is "CHI vs. LAL" (home) or "CHI @ LAL" (away) — opponent is always last token
+            matchup = str(row.get("MATCHUP", ""))
+            parts = matchup.replace("vs. ", "@").split("@")
+            opp_abbr = parts[-1].strip() if len(parts) > 1 else ""
 
-            result.setdefault(nba_pid, []).append({"game_date": game_date, "team_abbr": team_abbr})
+            result.setdefault(nba_pid, []).append({"game_date": game_date, "team_abbr": team_abbr, "opp_abbr": opp_abbr})
 
         # Upsert appearances for players already in our DB (matched by nba_id)
         nba_to_internal: dict[int, int] = {}
@@ -423,13 +714,84 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
             for app in appearances:
                 cur.execute(
                     "INSERT OR IGNORE INTO player_game_appearances "
-                    "(player_id, season_year, season_type, team_abbr, game_date) VALUES (?,?,?,?,?)",
-                    (internal_id, season_year, season_type, app["team_abbr"], app["game_date"]),
+                    "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date) VALUES (?,?,?,?,?,?)",
+                    (internal_id, season_year, season_type, app["team_abbr"], app.get("opp_abbr") or None, app["game_date"]),
                 )
+                # Backfill opp_abbr for any existing row cached without it
+                if app.get("opp_abbr"):
+                    cur.execute(
+                        "UPDATE player_game_appearances SET opp_abbr=? "
+                        "WHERE player_id=? AND season_year=? AND season_type=? AND game_date=? AND opp_abbr IS NULL",
+                        (app["opp_abbr"], internal_id, season_year, season_type, app["game_date"]),
+                    )
         conn.commit()
 
         _p_mode_cache[(season_year, season_type)] = result
         return result
+
+
+def _backfill_opp_abbr(player_id: int, nba_id: int | None, bbref_url: str | None,
+                       player_name: str, season_year: int, conn) -> bool:
+    """
+    Lazily backfill opp_abbr for any player_game_appearances rows that are NULL.
+
+    Uses the nba_api PlayerGameLog endpoint (single-player, cheap call) for
+    players with an nba_id, or re-fetches the BBRef playoff gamelog otherwise.
+    Returns True if any backfill was performed.
+    """
+    null_rows = conn.execute(
+        "SELECT COUNT(*) FROM player_game_appearances "
+        "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND opp_abbr IS NULL",
+        (player_id, season_year),
+    ).fetchone()[0]
+    if not null_rows:
+        return False
+
+    if nba_id and _NBA_API_AVAILABLE:
+        try:
+            from nba_api.stats.endpoints import playergamelog as _playergamelog
+            logger.info(
+                "Backfilling opp_abbr for %s year=%s via PlayerGameLog", player_name, season_year
+            )
+            time.sleep(2)
+            log = _playergamelog.PlayerGameLog(
+                player_id=nba_id,
+                season=_nba_season_str(season_year),
+                season_type_all_star=_nba_season_type("playoffs"),
+                timeout=60,
+            )
+            df = log.player_game_log.get_data_frame()
+        except Exception as exc:
+            logger.warning(
+                "PlayerGameLog backfill failed for %s year=%s: %s", player_name, season_year, exc
+            )
+            return False
+
+        if df.empty:
+            return False
+
+        cur = conn.cursor()
+        for _, row in df.iterrows():
+            game_date = str(row["GAME_DATE"])[:10]
+            matchup = str(row.get("MATCHUP", ""))
+            parts = matchup.replace("vs. ", "@").split("@")
+            opp = parts[-1].strip() if len(parts) > 1 else ""
+            if opp:
+                cur.execute(
+                    "UPDATE player_game_appearances SET opp_abbr=? "
+                    "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND game_date=? AND opp_abbr IS NULL",
+                    (opp, player_id, season_year, game_date),
+                )
+        conn.commit()
+        logger.info("opp_abbr backfill complete for %s year=%s", player_name, season_year)
+        return True
+
+    elif bbref_url:
+        # Re-call the BBRef fetcher — it now handles UPDATE of NULL rows
+        _fetch_bbref_playoff_gamelog(player_id, bbref_url, season_year, conn)
+        return True
+
+    return False
 
 
 def _get_team_margins(team_abbr: str, season_year: int, season_type: str, conn) -> dict[str, float]:

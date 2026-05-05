@@ -96,6 +96,11 @@ def init_db():
         );
     """)
 
+    # Migrations: player_game_appearances
+    existing_pga_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_game_appearances)").fetchall()]
+    if "opp_abbr" not in existing_pga_cols:
+        cur.execute("ALTER TABLE player_game_appearances ADD COLUMN opp_abbr TEXT")
+
     # Migrations: player_stats
     existing_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_stats)").fetchall()]
     if "playoff_games" not in existing_cols:

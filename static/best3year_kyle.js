@@ -29,6 +29,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadData();
   });
 
+  document.getElementById("suggest-btn").addEventListener("click", runSuggest);
+  document.getElementById("suggest-dismiss").addEventListener("click", () => {
+    document.getElementById("suggest-card").classList.add("hidden");
+  });
+
   updateColumnDefs();
   buildTableHeaders();
   await loadData();
@@ -39,7 +44,7 @@ async function loadData() {
   const spinner = document.getElementById("spinner");
   const msg     = document.getElementById("update-msg");
   spinner.classList.remove("hidden");
-  msg.textContent = "Loading…";
+  msg.textContent = "Loading\u2026";
   msg.className   = "update-msg";
 
   try {
@@ -48,11 +53,65 @@ async function loadData() {
     msg.className   = "update-msg success";
     renderTable();
   } catch (err) {
-    msg.textContent = `✗ ${err.message}`;
+    msg.textContent = `\u2717 ${err.message}`;
     msg.className   = "update-msg error";
   } finally {
     spinner.classList.add("hidden");
   }
+}
+
+/* ── Suggest Game ──────────────────────────────────────────────── */
+async function runSuggest() {
+  const spinner = document.getElementById("spinner");
+  const card    = document.getElementById("suggest-card");
+  const content = document.getElementById("suggest-content");
+
+  spinner.classList.remove("hidden");
+  card.classList.add("hidden");
+
+  try {
+    const data = await apiFetch(`/api/suggest_game?window=${windowSize}`);
+    content.innerHTML = renderSuggestContent(data);
+    card.classList.remove("hidden");
+  } catch (err) {
+    content.innerHTML = `<span class="suggest-error">\u2717 ${err.message}</span>`;
+    card.classList.remove("hidden");
+  } finally {
+    spinner.classList.add("hidden");
+  }
+}
+
+function renderSuggestContent(data) {
+  if (data.result === "found") {
+    const g  = data.game;
+    const p1 = data.player1;
+    const p2 = data.player2;
+    const gameInfo = g.team1 && g.team2 ? `${g.team1} vs ${g.team2}` : "Unknown matchup";
+    return `
+      <div class="suggest-found">
+        <div class="suggest-pair">
+          <a href="/player/${p1.id}" class="player-link">${p1.name}</a>
+          <span class="suggest-peak">${p1.peak} &mdash; ${fmt(p1.score)}</span>
+          <span class="suggest-vs">&amp;</span>
+          <a href="/player/${p2.id}" class="player-link">${p2.name}</a>
+          <span class="suggest-peak">${p2.peak} &mdash; ${fmt(p2.score)}</span>
+        </div>
+        <div class="suggest-game-info">
+          <span class="suggest-game-label">Suggested game:</span>
+          <strong>${gameInfo}</strong>
+          &bull; ${g.year}${g.game_date ? ` &bull; ${g.game_date}` : ""}
+        </div>
+        <div class="suggest-pair-score">Pair score: ${fmt(data.pair_score)}</div>
+        <a href="/watch_log" class="btn-nav suggest-watchlog">&rarr; Watch Log</a>
+      </div>`;
+  }
+  if (data.result === "missing_data") {
+    return `<span class="suggest-error">Appearance data missing for <strong>${data.player}</strong>. Run a scrape on their player page first.</span>`;
+  }
+  if (data.result === "none") {
+    return `<span class="suggest-none">${data.message || "No suggestion available."}</span>`;
+  }
+  return `<span class="suggest-error">${data.message || "An error occurred."}</span>`;
 }
 
 /* ── Table headers ─────────────────────────────────────────────── */
@@ -140,7 +199,7 @@ function buildRow(player, rank) {
 
     } else if (col.isYears) {
       td.className   = "year-cell";
-      td.textContent = `${player.best_start_year}–${player.best_end_year}`;
+      td.textContent = `${player.best_start_year}\u2013${player.best_end_year}`;
 
     } else if (col.isTotal) {
       td.className = "kyle-cell cumulative-total";
@@ -163,7 +222,6 @@ function buildRow(player, rank) {
       td.textContent = `${watched}/${played}`;
 
     } else {
-      /* regular_total / playoffs_total */
       td.className = "kyle-cell";
       const div = document.createElement("div");
       div.className   = "norm-val";
@@ -188,6 +246,6 @@ async function apiFetch(url, options = {}) {
 
 /* ── Formatting ─────────────────────────────────────────────────── */
 function fmt(val) {
-  if (val === null || val === undefined) return "—";
+  if (val === null || val === undefined) return "\u2014";
   return parseFloat(val).toFixed(2);
 }
