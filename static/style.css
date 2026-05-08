@@ -679,9 +679,29 @@ a.player-link:hover {
   margin-bottom: 10px;
 }
 
+.suggest-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .suggest-watchlog {
   font-size: .85rem;
   padding: 4px 10px;
+}
+
+.btn-suggest-next {
+  font-size: .85rem;
+  padding: 4px 10px;
+  background: #1f3045;
+  border: 1px solid #388bfd;
+  color: #388bfd;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-suggest-next:hover {
+  background: #253d5e;
+  color: #58a6ff;
 }
 
 .suggest-error { color: #f78166; }

@@ -1,8 +1,9 @@
 /* ── State ─────────────────────────────────────────────────────── */
-let tableData  = [];
-let sortCol    = "best_window_total";
-let sortDir    = "desc";
-let windowSize = 3;
+let tableData   = [];
+let sortCol     = "best_window_total";
+let sortDir     = "desc";
+let windowSize  = 3;
+let suggestSkip = 0;
 
 /* ── Column definitions (rebuilt when window changes) ──────────── */
 let COLUMNS = [];
@@ -30,9 +31,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadData();
   });
 
-  document.getElementById("suggest-btn").addEventListener("click", runSuggest);
+  document.getElementById("suggest-btn").addEventListener("click", () => {
+    suggestSkip = 0;
+    runSuggest();
+  });
   document.getElementById("suggest-dismiss").addEventListener("click", () => {
     document.getElementById("suggest-card").classList.add("hidden");
+    suggestSkip = 0;
   });
 
   updateColumnDefs();
@@ -71,8 +76,16 @@ async function runSuggest() {
   card.classList.add("hidden");
 
   try {
-    const data = await apiFetch(`/api/suggest_game?window=${windowSize}`);
+    const data = await apiFetch(`/api/suggest_game?window=${windowSize}&skip=${suggestSkip}`);
     content.innerHTML = renderSuggestContent(data);
+    // Wire up "Next" button if it was rendered
+    const nextBtn = document.getElementById("suggest-next-btn");
+    if (nextBtn) {
+      nextBtn.addEventListener("click", () => {
+        suggestSkip++;
+        runSuggest();
+      });
+    }
     card.classList.remove("hidden");
   } catch (err) {
     content.innerHTML = `<span class="suggest-error">\u2717 ${err.message}</span>`;
@@ -103,7 +116,10 @@ function renderSuggestContent(data) {
           &bull; ${g.year}${g.game_date ? ` &bull; ${g.game_date}` : ""}
         </div>
         <div class="suggest-pair-score">Pair score: ${fmt(data.pair_score)}</div>
-        <a href="/watch_log" class="btn-nav suggest-watchlog">&rarr; Watch Log</a>
+        <div class="suggest-actions">
+          <a href="/watch_log" class="btn-nav suggest-watchlog">&rarr; Watch Log</a>
+          <button id="suggest-next-btn" class="btn-nav btn-suggest-next">Next &rsaquo;</button>
+        </div>
       </div>`;
   }
   if (data.result === "missing_data") {

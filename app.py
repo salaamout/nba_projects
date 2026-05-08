@@ -813,9 +813,12 @@ def suggest_game():
     Query parameters
     ----------------
     window : int (default 3)  — passed to the same peak-window logic as best3year
+    skip   : int (default 0)  — number of unwatched candidates to skip (for "Next" navigation)
     """
     window = request.args.get("window", 3, type=int)
     window = max(1, min(window, 20))
+    skip   = request.args.get("skip", 0, type=int)
+    skip   = max(0, skip)
 
     conn = get_conn()
     try:
@@ -942,6 +945,7 @@ def suggest_game():
         pairs.sort(key=lambda x: x[0], reverse=True)
 
         # ── Step 3: Iterate pairs, fetch appearances, find unwatched game ──
+        found_count = 0  # tracks how many unwatched candidates we've passed
         for pair_score, pa, pb, overlap_start, overlap_end in pairs:
             p1_id = pa["player_id"]
             p2_id = pb["player_id"]
@@ -1053,7 +1057,12 @@ def suggest_game():
                 if watched:
                     continue  # already logged
 
-                # Found an unwatched candidate — return it
+                # Found an unwatched candidate
+                if found_count < skip:
+                    found_count += 1
+                    continue  # skip this one, keep looking
+
+                # Return this candidate
                 conn.close()
                 return jsonify({
                     "result": "found",
