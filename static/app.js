@@ -661,6 +661,7 @@ function fmtRaw(key, val) {
   const n = parseFloat(val);
   if (key === "minutes") return Math.round(n).toLocaleString();
   if (key === "true_shooting_pct") return (n * 100).toFixed(1) + "%";
+  if (key === "points_per_shot") return n.toFixed(2);
   if (key === "usage_rate" || key === "assist_rate" || key === "turnover_pct")
     return n.toFixed(1) + "%";
   return n.toFixed(1);

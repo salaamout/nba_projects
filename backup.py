@@ -120,4 +120,4 @@ if __name__ == "__main__":
     if "--check" in sys.argv:
         check_rclone()
     else:
-        # backup()
+        backup()

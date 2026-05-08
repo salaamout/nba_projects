@@ -572,6 +572,32 @@ def best3year():
 
     conn = get_conn()
 
+    # Pre-compute playoff_played (all players, not just selected) from player_stats
+    # {(player_id, year) -> game_count}
+    all_playoff_played: dict[tuple[int, int], int] = {}
+    for r in conn.execute(
+        """
+        SELECT ps.player_id, s.season_year, ps.playoff_games
+        FROM player_stats ps
+        JOIN seasons s ON s.id = ps.season_id
+        WHERE s.season_type = 'playoffs' AND ps.playoff_games IS NOT NULL
+        """
+    ).fetchall():
+        all_playoff_played[(r["player_id"], r["season_year"])] = r["playoff_games"]
+
+    # Pre-compute playoff_watched for all players from watched_game_players
+    # {(player_id, year) -> count}
+    all_playoff_watched: dict[tuple[int, int], int] = {}
+    for r in conn.execute(
+        """
+        SELECT wgp.player_id, g.game_year, COUNT(DISTINCT wgp.game_id) AS cnt
+        FROM watched_game_players wgp
+        JOIN watched_playoff_games g ON g.id = wgp.game_id
+        GROUP BY wgp.player_id, g.game_year
+        """
+    ).fetchall():
+        all_playoff_watched[(r["player_id"], r["game_year"])] = r["cnt"]
+
     seasons = conn.execute(
         """
         SELECT DISTINCT s.id, s.season_year, s.season_type
@@ -671,8 +697,8 @@ def best3year():
             wk_vals = [years[y]["watch_kyle"] for y in window_years if years[y].get("watch_kyle") is not None]
             wk_total = round(sum(wk_vals), 4) if wk_vals else None
 
-            pw_watched = sum(years[y].get("playoff_watched", 0) for y in window_years)
-            pw_played  = sum(years[y].get("playoff_played",  0) for y in window_years)
+            pw_watched = sum(all_playoff_watched.get((pid, y), 0) for y in window_years)
+            pw_played  = sum(all_playoff_played.get((pid, y), 0)  for y in window_years)
 
             if best_window_entry is None or total > best_window_entry["best_window_total"]:
                 best_window_entry = {
@@ -692,8 +718,87 @@ def best3year():
         if best_window_entry:
             result.append(best_window_entry)
 
+    # ── Compute Least Squares scores ─────────────────────────────────────────
+    # Build peak-window lookup: {player_id: (start_year, end_year)}
+    peak_windows = {
+        entry["player_id"]: (entry["best_start_year"], entry["best_end_year"])
+        for entry in result
+    }
+
+    conn2 = get_conn()
+    try:
+        game_rows = conn2.execute(
+            """
+            SELECT
+                g.id          AS game_id,
+                g.game_year,
+                g.best_player_id,
+                wgp.player_id
+            FROM watched_playoff_games g
+            JOIN watched_game_players wgp ON wgp.game_id = g.id
+            ORDER BY g.id
+            """
+        ).fetchall()
+    finally:
+        conn2.close()
+
+    # Group by game_id
+    from collections import defaultdict
+    games_map: dict = defaultdict(lambda: {"game_year": None, "best_player_id": None, "player_ids": []})
+    player_game_counts: dict[int, int] = defaultdict(int)
+    for r in game_rows:
+        gid = r["game_id"]
+        games_map[gid]["game_year"] = r["game_year"]
+        games_map[gid]["best_player_id"] = r["best_player_id"]
+        games_map[gid]["player_ids"].append(r["player_id"])
+        player_game_counts[r["player_id"]] += 1
+
+    # Only include players watched in at least 5 games in LS comparisons
+    MIN_GAMES_WATCHED = 5
+    qualified_players = {pid for pid, cnt in player_game_counts.items() if cnt >= MIN_GAMES_WATCHED}
+
+    comparisons = []
+    win_counts: dict[int, int] = defaultdict(int)
+    loss_counts: dict[int, int] = defaultdict(int)
+
+    for gid, gdata in games_map.items():
+        game_year = gdata["game_year"]
+        best_id   = gdata["best_player_id"]
+        if best_id is None:
+            continue
+        # Filter players whose peak window contains this game_year
+        # and who have been watched in at least MIN_GAMES_WATCHED games
+        filtered = [
+            pid for pid in gdata["player_ids"]
+            if pid in peak_windows
+            and peak_windows[pid][0] <= game_year <= peak_windows[pid][1]
+            and pid in qualified_players
+        ]
+        if best_id not in filtered or len(filtered) < 2:
+            continue
+        for other_id in filtered:
+            if other_id == best_id:
+                continue
+            comparisons.append((best_id, other_id))
+            win_counts[best_id] += 1
+            loss_counts[other_id] += 1
+
+    ls_scores = kyle.compute_least_squares_scores(comparisons)
+
+    # Attach ls_score and comparison counts to each result entry
+    for entry in result:
+        pid = entry["player_id"]
+        score = ls_scores.get(pid)
+        w = win_counts.get(pid, 0)
+        l = loss_counts.get(pid, 0)
+        entry["ls_score"] = score
+        entry["ls_wins"]  = w
+        entry["ls_losses"] = l
+        entry["ls_comparisons"] = w + l
+
     result.sort(key=lambda x: x["best_window_total"], reverse=True)
     return jsonify(result)
+
 
 
 # ---------------------------------------------------------------------------

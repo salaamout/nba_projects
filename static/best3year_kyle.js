@@ -16,6 +16,7 @@ function updateColumnDefs() {
     { key: "best_window_total", label: `Best ${windowSize}-Yr Total`, isTotal: true },
     { key: "watch_kyle_total",  label: "Watch K.Y.L.E.",           isWatch: true },
     { key: "playoff_games",     label: "Playoff Games",            isPlayoffGames: true },
+    { key: "ls_score",          label: "LS Score",                 isLS: true },
   ];
 }
 
@@ -220,6 +221,10 @@ function buildRow(player, rank) {
       const watched = player.playoff_watched ?? 0;
       const played  = player.playoff_played  ?? 0;
       td.textContent = `${watched}/${played}`;
+
+    } else if (col.isLS) {
+      td.className   = "num-cell";
+      td.textContent = player.ls_score != null ? parseFloat(player.ls_score).toFixed(4) : "\u2014";
 
     } else {
       td.className = "kyle-cell";

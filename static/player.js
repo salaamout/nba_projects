@@ -118,7 +118,7 @@ function renderStatTable(tbodyId, rows, isPlayoffs) {
     }
 
     statTd(tr, s.usage_rate,       "pct");
-    statTd(tr, s.true_shooting_pct ? s.true_shooting_pct * 2 : null, "dec");  // pts/shot = TS%*2
+    statTd(tr, s.true_shooting_pct ? s.true_shooting_pct * 2 : null, "dec2");  // pts/shot = TS%*2
     statTd(tr, s.assist_rate,      "pct");
     statTd(tr, s.turnover_pct,     "pct");
     statTd(tr, s.on_court_rating,  "dec");
@@ -148,6 +148,8 @@ function statTd(tr, val, fmt, tooltip) {
     let text;
     if (fmt === "pct") {
       text = n.toFixed(1) + "%";
+    } else if (fmt === "dec2") {
+      text = n.toFixed(2);
     } else {
       text = n.toFixed(1);
     }

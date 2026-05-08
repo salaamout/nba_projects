@@ -8,6 +8,8 @@ Output: same list with added keys:
     - kyle_rating      final sum
 """
 
+import numpy as np
+
 FIELDS = [
     "minutes",
     "usage_rate",
@@ -207,3 +209,46 @@ def calculate_all(all_player_rows, selected_bounds, season_type="regular"):
     _add_derived(rows)
     _apply_bounds(rows, selected_bounds, clamp=False)
     return rows
+
+
+def compute_least_squares_scores(comparisons):
+    """Solve a least-squares ranking system from pairwise comparisons.
+
+    Parameters
+    ----------
+    comparisons : list of (winner_id, loser_id)
+        Each tuple represents one pairwise comparison where winner beat loser.
+
+    Returns
+    -------
+    dict mapping player_id -> ls_score (float, rounded to 4 decimal places)
+    """
+    if not comparisons:
+        return {}
+
+    # Build sorted unique player list and index map
+    player_ids = sorted({pid for pair in comparisons for pid in pair})
+    if len(player_ids) < 2:
+        return {}
+
+    idx = {pid: i for i, pid in enumerate(player_ids)}
+    P = len(player_ids)
+    E = len(comparisons)
+
+    # Build A (E x P) and b (E,)
+    A = np.zeros((E, P), dtype=float)
+    b = np.ones(E, dtype=float)
+
+    for row, (winner, loser) in enumerate(comparisons):
+        A[row, idx[winner]] = 1.0
+        A[row, idx[loser]]  = -1.0
+
+    # Append zero-mean regularization row: sum(s) = 0
+    reg_row = np.ones((1, P), dtype=float)
+    A = np.vstack([A, reg_row])
+    b = np.append(b, 0.0)
+
+    # Solve least squares
+    scores, _, _, _ = np.linalg.lstsq(A, b, rcond=None)
+
+    return {player_ids[i]: round(float(scores[i]), 4) for i in range(P)}
