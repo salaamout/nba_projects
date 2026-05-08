@@ -60,6 +60,11 @@ _fetched_seasons: set[tuple[int, str, str]] = set()  # (year, season_type, "T"|"
 # In-memory cache for P-mode results: (season_year, season_type) → dict[nba_player_id → list[dict]]
 _p_mode_cache: dict[tuple[int, str], dict[int, list[dict]]] = {}
 
+# Tracks which (player_id, season_year) combos have already been attempted via
+# BBRef this process run, so we don't re-fetch if the player simply had no
+# playoff games that year (nothing gets inserted, so the DB cache check misses).
+_fetched_bbref_seasons: set[tuple[int, int]] = set()
+
 # Mapping from bbref team abbreviations → nba_api/stats.nba.com abbreviations.
 # Only entries where the two systems DIFFER are needed; the fallback in
 # _to_nba_abbr returns the original string for anything not listed here.
@@ -252,18 +257,29 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
     bbref_url example: '/players/j/jordami01.html'
     BBRef gamelog URL:  '/players/j/jordami01/gamelog/1991'  (for the 1990-91 season)
     """
-    # Check cache first — skip re-fetch only if all cached rows already have opp_abbr
-    null_count = conn.execute(
-        "SELECT COUNT(*) FROM player_game_appearances "
-        "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND opp_abbr IS NULL",
+    bbref_cache_key = (player_id, season_year)
+
+    # Check in-memory guard first (fast path within a single process run).
+    if bbref_cache_key in _fetched_bbref_seasons:
+        all_cached = conn.execute(
+            "SELECT game_date FROM player_game_appearances "
+            "WHERE player_id=? AND season_year=? AND season_type='playoffs'",
+            (player_id, season_year),
+        ).fetchall()
+        return {r["game_date"] for r in all_cached}
+
+    # Check persistent DB log — survives server restarts.
+    already_fetched = conn.execute(
+        "SELECT 1 FROM bbref_playoff_fetch_log WHERE player_id=? AND season_year=?",
         (player_id, season_year),
-    ).fetchone()[0]
-    all_cached = conn.execute(
-        "SELECT game_date FROM player_game_appearances "
-        "WHERE player_id=? AND season_year=? AND season_type='playoffs'",
-        (player_id, season_year),
-    ).fetchall()
-    if all_cached and null_count == 0:
+    ).fetchone()
+    if already_fetched:
+        _fetched_bbref_seasons.add(bbref_cache_key)
+        all_cached = conn.execute(
+            "SELECT game_date FROM player_game_appearances "
+            "WHERE player_id=? AND season_year=? AND season_type='playoffs'",
+            (player_id, season_year),
+        ).fetchall()
         return {r["game_date"] for r in all_cached}
 
     # Build gamelog URL from bbref_url
@@ -277,12 +293,18 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
         time.sleep(2)
     except Exception as exc:
         logger.warning("BBRef gamelog fetch failed for %s year=%s: %s", bbref_url, season_year, exc)
+        _fetched_bbref_seasons.add(bbref_cache_key)
+        conn.execute("INSERT OR IGNORE INTO bbref_playoff_fetch_log (player_id, season_year) VALUES (?,?)", (player_id, season_year))
+        conn.commit()
         return set()
 
     try:
         rows = _parse_table(soup, "pgl_basic_playoffs")
     except ValueError:
         logger.info("No pgl_basic_playoffs table for %s year=%s", bbref_id, season_year)
+        _fetched_bbref_seasons.add(bbref_cache_key)
+        conn.execute("INSERT OR IGNORE INTO bbref_playoff_fetch_log (player_id, season_year) VALUES (?,?)", (player_id, season_year))
+        conn.commit()
         return set()
 
     cur = conn.cursor()
@@ -328,6 +350,9 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
             )
         dates.add(game_date)
 
+    conn.commit()
+    _fetched_bbref_seasons.add(bbref_cache_key)
+    conn.execute("INSERT OR IGNORE INTO bbref_playoff_fetch_log (player_id, season_year) VALUES (?,?)", (player_id, season_year))
     conn.commit()
     logger.info("BBRef playoff gamelog: cached %d appearances for player_id=%s year=%s", len(dates), player_id, season_year)
     return dates
@@ -747,7 +772,7 @@ def _backfill_opp_abbr(player_id: int, nba_id: int | None, bbref_url: str | None
     if not null_rows:
         return False
 
-    if nba_id and _NBA_API_AVAILABLE:
+    if nba_id and _NBA_API_AVAILABLE and season_year >= 1997:
         try:
             from nba_api.stats.endpoints import playergamelog as _playergamelog
             logger.info(
@@ -858,8 +883,8 @@ def _get_player_appearances(
     for app in player_apps:
         cur.execute(
             "INSERT OR IGNORE INTO player_game_appearances "
-            "(player_id, season_year, season_type, team_abbr, game_date) VALUES (?,?,?,?,?)",
-            (player_id, season_year, season_type, app["team_abbr"], app["game_date"]),
+            "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date) VALUES (?,?,?,?,?,?)",
+            (player_id, season_year, season_type, app["team_abbr"], app.get("opp_abbr") or None, app["game_date"]),
         )
     conn.commit()
 

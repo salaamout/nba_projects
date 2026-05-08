@@ -94,6 +94,12 @@ def init_db():
             player_id INTEGER NOT NULL REFERENCES players(id),
             UNIQUE(game_id, player_id)
         );
+
+        CREATE TABLE IF NOT EXISTS bbref_playoff_fetch_log (
+            player_id   INTEGER NOT NULL,
+            season_year INTEGER NOT NULL,
+            PRIMARY KEY (player_id, season_year)
+        );
     """)
 
     # Migrations: player_game_appearances

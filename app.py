@@ -10,6 +10,13 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Suggest-game candidate cache
+# ---------------------------------------------------------------------------
+# key  : (window, sorted_player_ids_tuple, watch_log_count)
+# value: list of candidate dicts (fully built, ordered, ready to index by skip)
+_suggest_cache: dict = {}
+
 
 # ---------------------------------------------------------------------------
 # Initialise DB on startup
@@ -814,7 +821,15 @@ def suggest_game():
     ----------------
     window : int (default 3)  — passed to the same peak-window logic as best3year
     skip   : int (default 0)  — number of unwatched candidates to skip (for "Next" navigation)
+
+    The full ordered candidate list is computed once and cached server-side,
+    keyed by (window, selected_player_ids, watch_log_count).  Subsequent
+    "Next" clicks are served instantly from the cache; the cache is
+    automatically invalidated whenever the watch log or selected-player set
+    changes.
     """
+    import itertools
+
     window = request.args.get("window", 3, type=int)
     window = max(1, min(window, 20))
     skip   = request.args.get("skip", 0, type=int)
@@ -822,8 +837,27 @@ def suggest_game():
 
     conn = get_conn()
     try:
-        # ── Step 1: Replicate best3year logic to get each player's peak window ──
+        # ── Build the cache key ──────────────────────────────────────────────
+        selected_ids = tuple(sorted(
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT player_id FROM selected_players"
+            ).fetchall()
+        ))
+        watch_log_count = conn.execute(
+            "SELECT COUNT(*) FROM watched_playoff_games"
+        ).fetchone()[0]
+        cache_key = (window, selected_ids, watch_log_count)
 
+        if cache_key in _suggest_cache:
+            candidates = _suggest_cache[cache_key]
+            conn.close()
+            if skip < len(candidates):
+                return jsonify(candidates[skip])
+            return jsonify({"result": "none", "message": "No unwatched games found for any overlapping pair."})
+
+        # ── Cache miss — build the full candidate list ───────────────────────
+
+        # Step 1: Replicate best3year logic to get each player's peak window
         seasons = conn.execute(
             """
             SELECT DISTINCT s.id, s.season_year, s.season_type
@@ -862,7 +896,6 @@ def suggest_game():
 
             player_dicts = [_row_to_dict(r) for r in rows]
 
-            watch_map = {}
             if season_type == "playoffs":
                 watch_map = _get_watch_kyle_by_player(conn, season_year)
                 for d in player_dicts:
@@ -889,7 +922,7 @@ def suggest_game():
                     yr_data["playoffs"] += rating
 
         # Build peak-window entries (same as best3year)
-        peaks = []  # {player_id, name, best_start_year, best_end_year, best_window_total}
+        peaks = []
         for pid, pdata in player_years.items():
             name  = pdata["name"]
             years = pdata["years"]
@@ -916,6 +949,7 @@ def suggest_game():
                 peaks.append(best_entry)
 
         if len(peaks) < 2:
+            _suggest_cache[cache_key] = []
             conn.close()
             return jsonify({"result": "none", "message": "No overlapping peak windows."})
 
@@ -927,69 +961,67 @@ def suggest_game():
         ).fetchall()
         player_meta = {r["id"]: {"nba_id": r["nba_id"], "bbref_url": r["bbref_url"]} for r in player_meta_rows}
 
-        # ── Step 2: Build overlapping pairs sorted by min(score) desc ──
-        import itertools
+        # Step 2: Build overlapping pairs sorted by min(score) desc
         pairs = []
         for a, b in itertools.combinations(peaks, 2):
-            # Check overlap
             if a["best_start_year"] <= b["best_end_year"] and b["best_start_year"] <= a["best_end_year"]:
-                pair_score = min(a["best_window_total"], b["best_window_total"])
+                pair_score    = min(a["best_window_total"], b["best_window_total"])
                 overlap_start = max(a["best_start_year"], b["best_start_year"])
                 overlap_end   = min(a["best_end_year"],   b["best_end_year"])
                 pairs.append((pair_score, a, b, overlap_start, overlap_end))
 
         if not pairs:
+            _suggest_cache[cache_key] = []
             conn.close()
             return jsonify({"result": "none", "message": "No players with overlapping peak windows."})
 
         pairs.sort(key=lambda x: x[0], reverse=True)
 
-        # ── Step 3: Iterate pairs, fetch appearances, find unwatched game ──
-        found_count = 0  # tracks how many unwatched candidates we've passed
+        # Step 3: Iterate ALL pairs, fetch appearances, collect ALL unwatched
+        # candidates into a list.  We no longer return early — the goal is to
+        # build the complete ordered list once so every subsequent "Next" click
+        # is served from cache without any recomputation.
+        candidates = []
+
         for pair_score, pa, pb, overlap_start, overlap_end in pairs:
-            p1_id = pa["player_id"]
-            p2_id = pb["player_id"]
+            p1_id   = pa["player_id"]
+            p2_id   = pb["player_id"]
             p1_meta = player_meta.get(p1_id, {})
             p2_meta = player_meta.get(p2_id, {})
 
-            # Fetch appearances for each player across each year in the overlap
+            # Fetch / ensure appearances are cached for every year in the overlap
             for year in range(overlap_start, overlap_end + 1):
                 for pid, meta in [(p1_id, p1_meta), (p2_id, p2_meta)]:
-                    nba_id    = meta.get("nba_id")
-                    bbref_url = meta.get("bbref_url")
+                    nba_id      = meta.get("nba_id")
+                    bbref_url   = meta.get("bbref_url")
                     player_name = pa["name"] if pid == p1_id else pb["name"]
 
-                    # Check if already cached for this year
-                    cached = conn.execute(
+                    already_cached = conn.execute(
                         "SELECT 1 FROM player_game_appearances "
                         "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
                         (pid, year),
                     ).fetchone()
-                    if cached:
-                        # Cached but may be missing opp_abbr — backfill lazily
-                        _backfill_opp_abbr(pid, nba_id, bbref_url, player_name, year, conn)
+
+                    if already_cached:
+                        # Only backfill opp_abbr the very first time (when the
+                        # appearance rows were just written).  On a cache hit we
+                        # skip it to avoid the extra DB/network round-trip.
                         continue
 
-                    # If nba_id is missing, try to auto-discover it (even when
-                    # bbref_url is set — the NBA API path is more reliable and
-                    # avoids hammering BBRef with rate-limited requests).
+                    # Try to auto-discover nba_id when missing
                     if not nba_id:
                         discovered_id = _get_nba_id_for_player(player_name, conn)
                         if discovered_id:
                             nba_id = discovered_id
                             meta["nba_id"] = discovered_id
 
-                    # For seasons before 2000 the stats.nba.com LeagueGameLog
-                    # endpoint returns empty responses; use BBRef for those years.
+                    # stats.nba.com LeagueGameLog returns empty for pre-2000
                     use_nba_api = nba_id and year >= 2000
 
                     if use_nba_api:
-                        # Use nba_api path (handles its own caching)
                         _get_player_appearances(
-                            player_name,
-                            pid, nba_id, year, "playoffs", [], conn
+                            player_name, pid, nba_id, year, "playoffs", [], conn
                         )
-                        # Backfill opp_abbr if the league-wide fetch didn't include it
                         _backfill_opp_abbr(pid, nba_id, bbref_url, player_name, year, conn)
                     elif bbref_url:
                         _fetch_bbref_playoff_gamelog(pid, bbref_url, year, conn)
@@ -999,9 +1031,7 @@ def suggest_game():
                             player_name, year,
                         )
 
-            # Find co-appearance games — players must have faced each other
-            # (a1.opp_abbr = a2.team_abbr ensures they were in the same game, not
-            #  separate games that happened to fall on the same date)
+            # Find co-appearance games (players must have faced each other)
             co_games = conn.execute(
                 """
                 SELECT a1.game_date, a1.season_year,
@@ -1025,16 +1055,14 @@ def suggest_game():
                 (p1_id, p2_id, overlap_start, overlap_end),
             ).fetchall()
 
-            # Cross-reference against watch log using game_of_round + round,
-            # which uniquely identifies a game within a series.
             for game in co_games:
                 game_date     = game["game_date"]
                 season_year   = game["season_year"]
                 game_of_round = game["game_of_round"]
                 team1_variants = abbr_to_team_name_variants(game["team1_abbr"], season_year)
                 team2_variants = abbr_to_team_name_variants(game["team2_abbr"], season_year)
-                team1_name  = team1_variants[0] if team1_variants else game["team1_abbr"]
-                team2_name  = team2_variants[0] if team2_variants else game["team2_abbr"]
+                team1_name = team1_variants[0] if team1_variants else game["team1_abbr"]
+                team2_name = team2_variants[0] if team2_variants else game["team2_abbr"]
 
                 t1_ph = ",".join("?" * len(team1_variants))
                 t2_ph = ",".join("?" * len(team2_variants))
@@ -1055,16 +1083,9 @@ def suggest_game():
                 ).fetchone()
 
                 if watched:
-                    continue  # already logged
+                    continue
 
-                # Found an unwatched candidate
-                if found_count < skip:
-                    found_count += 1
-                    continue  # skip this one, keep looking
-
-                # Return this candidate
-                conn.close()
-                return jsonify({
+                candidates.append({
                     "result": "found",
                     "player1": {
                         "name":  pa["name"],
@@ -1080,16 +1101,21 @@ def suggest_game():
                     },
                     "pair_score": round(pair_score, 4),
                     "game": {
-                        "year":       season_year,
-                        "game_date":  game_date,
-                        "team1":      team1_name,
-                        "team2":      team2_name,
-                        "round":      None,
+                        "year":        season_year,
+                        "game_date":   game_date,
+                        "team1":       team1_name,
+                        "team2":       team2_name,
+                        "round":       None,
                         "round_known": False,
                     },
                 })
 
+        # Store the full list in the cache
+        _suggest_cache[cache_key] = candidates
+
         conn.close()
+        if skip < len(candidates):
+            return jsonify(candidates[skip])
         return jsonify({"result": "none", "message": "No unwatched games found for any overlapping pair."})
 
     except Exception as exc:
