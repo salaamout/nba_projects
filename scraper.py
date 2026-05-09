@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.basketball-reference.com"
 
+
+class RateLimitError(Exception):
+    """Raised when BBRef returns 429 after exhausting all retries."""
+
 # In-memory cache for team game log fetches that returned no data (e.g. no
 # playoff games for a team).  Without this, every player on the same team
 # would trigger a redundant HTTP request.
@@ -269,11 +273,12 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
         return {r["game_date"] for r in all_cached}
 
     # Check persistent DB log — survives server restarts.
+    # Only skip re-fetching when the prior attempt was a genuine success.
     already_fetched = conn.execute(
-        "SELECT 1 FROM bbref_playoff_fetch_log WHERE player_id=? AND season_year=?",
+        "SELECT fetch_status FROM bbref_playoff_fetch_log WHERE player_id=? AND season_year=?",
         (player_id, season_year),
     ).fetchone()
-    if already_fetched:
+    if already_fetched and already_fetched["fetch_status"] == "success":
         _fetched_bbref_seasons.add(bbref_cache_key)
         all_cached = conn.execute(
             "SELECT game_date FROM player_game_appearances "
@@ -281,6 +286,20 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
             (player_id, season_year),
         ).fetchall()
         return {r["game_date"] for r in all_cached}
+    if already_fetched and already_fetched["fetch_status"] == "no_table":
+        # Player legitimately didn't play in the playoffs that year — don't retry.
+        _fetched_bbref_seasons.add(bbref_cache_key)
+        return set()
+    # If status is 'error', fall through and retry.
+
+    def _upsert_fetch_log(status: str):
+        conn.execute(
+            "INSERT INTO bbref_playoff_fetch_log (player_id, season_year, fetch_status, fetched_at) "
+            "VALUES (?,?,?,?) ON CONFLICT(player_id, season_year) DO UPDATE SET "
+            "fetch_status=excluded.fetch_status, fetched_at=excluded.fetched_at",
+            (player_id, season_year, status, datetime.utcnow().isoformat()),
+        )
+        conn.commit()
 
     # Build gamelog URL from bbref_url
     # /players/j/jordami01.html  →  /players/j/jordami01/gamelog/{year}
@@ -291,26 +310,40 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
     try:
         soup = _get(gamelog_url)
         time.sleep(2)
+    except RateLimitError as exc:
+        logger.warning("BBRef rate-limit exhausted for %s year=%s: %s", bbref_url, season_year, exc)
+        _upsert_fetch_log("error")
+        return set()
     except Exception as exc:
         logger.warning("BBRef gamelog fetch failed for %s year=%s: %s", bbref_url, season_year, exc)
-        _fetched_bbref_seasons.add(bbref_cache_key)
-        conn.execute("INSERT OR IGNORE INTO bbref_playoff_fetch_log (player_id, season_year) VALUES (?,?)", (player_id, season_year))
-        conn.commit()
+        _upsert_fetch_log("error")
         return set()
 
-    try:
-        rows = _parse_table(soup, "pgl_basic_playoffs")
-    except ValueError:
+    # Check for rate-limit / anti-bot page by inspecting the <title>
+    page_title = (soup.find("title") or {}).get_text(strip=True).lower() if soup.find("title") else ""
+    if any(x in page_title for x in ("429", "too many requests", "access denied", "robot")):
+        logger.warning("Rate-limit page detected for %s year=%s (title: %s)", bbref_id, season_year, page_title)
+        _upsert_fetch_log("no_table")
+        return set()
+
+    # Older BBRef pages (pre-~2000) use 'player_game_log_post' instead of 'pgl_basic_playoffs'
+    rows = None
+    for table_id in ("pgl_basic_playoffs", "player_game_log_post"):
+        try:
+            rows = _parse_table(soup, table_id)
+            break
+        except ValueError:
+            continue
+    if rows is None:
         logger.info("No pgl_basic_playoffs table for %s year=%s", bbref_id, season_year)
-        _fetched_bbref_seasons.add(bbref_cache_key)
-        conn.execute("INSERT OR IGNORE INTO bbref_playoff_fetch_log (player_id, season_year) VALUES (?,?)", (player_id, season_year))
-        conn.commit()
+        _upsert_fetch_log("no_table")
         return set()
 
     cur = conn.cursor()
     dates: set[str] = set()
     for row in rows:
-        date_str = row.get("date_game", "").strip()
+        # Newer BBRef pages use 'date_game'; older pages (pre-~2000) use 'date'
+        date_str = (row.get("date_game") or row.get("date") or "").strip()
         if not date_str or date_str.lower() in ("", "date"):
             continue
         # BBRef dates look like "1991-05-25" or "May 25, 1991"
@@ -327,8 +360,9 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
                 logger.debug("Unparseable date '%s' in BBRef gamelog %s %s", date_str, bbref_id, season_year)
                 continue
 
+        # Newer: team_id / opp_id; older: team_name_abbr / opp_name_abbr
         team_abbr = (row.get("team_id") or row.get("team_name_abbr") or "").strip()
-        opp_abbr  = (row.get("opp_id")  or row.get("opp") or "").strip() or None
+        opp_abbr  = (row.get("opp_id")  or row.get("opp") or row.get("opp_name_abbr") or "").strip() or None
         inactive = row.get("reason", "").strip()
         if inactive.lower() in ("inactive", "did not play", "dnp", "not with team", "suspended"):
             continue
@@ -352,7 +386,12 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
 
     conn.commit()
     _fetched_bbref_seasons.add(bbref_cache_key)
-    conn.execute("INSERT OR IGNORE INTO bbref_playoff_fetch_log (player_id, season_year) VALUES (?,?)", (player_id, season_year))
+    conn.execute(
+        "INSERT INTO bbref_playoff_fetch_log (player_id, season_year, fetch_status, fetched_at) "
+        "VALUES (?,?,?,?) ON CONFLICT(player_id, season_year) DO UPDATE SET "
+        "fetch_status=excluded.fetch_status, fetched_at=excluded.fetched_at",
+        (player_id, season_year, "success", datetime.utcnow().isoformat()),
+    )
     conn.commit()
     logger.info("BBRef playoff gamelog: cached %d appearances for player_id=%s year=%s", len(dates), player_id, season_year)
     return dates
@@ -412,11 +451,14 @@ def _get(url: str, max_retries: int = 5) -> BeautifulSoup:
     """Fetch a page and return a BeautifulSoup object.
 
     Automatically retries with exponential backoff on 429 Too Many Requests.
+    Raises RateLimitError if all retries are exhausted on a 429.
     """
     logger.info("Fetching %s", url)
+    last_status = None
     for attempt in range(max_retries):
         resp = requests.get(url, headers=HEADERS, timeout=30)
         if resp.status_code == 429:
+            last_status = 429
             wait = 60 * (2 ** attempt)  # 60s, 120s, 240s, ...
             logger.warning(
                 "429 Too Many Requests for %s — waiting %ds before retry %d/%d",
@@ -426,6 +468,9 @@ def _get(url: str, max_retries: int = 5) -> BeautifulSoup:
             continue
         resp.raise_for_status()
         return BeautifulSoup(resp.content.decode("utf-8", errors="replace"), "html.parser")
+    # If we exhausted retries due to 429, raise a custom error
+    if last_status == 429:
+        raise RateLimitError(f"Rate-limited by BBRef after {max_retries} retries: {url}")
     # Final attempt — let raise_for_status surface the error
     resp.raise_for_status()
     return BeautifulSoup(resp.content.decode("utf-8", errors="replace"), "html.parser")
@@ -621,6 +666,20 @@ _TEAM_ABBR_ALIASES: dict[str, str] = {
 }
 
 
+def _record_league_game_log_fetch(season_year: int, season_type: str, player_or_team: str, conn):
+    """Record that the LeagueGameLog for this season/type/mode has been fully fetched."""
+    import datetime
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO league_game_log_fetch_log "
+            "(season_year, season_type, player_or_team, fetched_at) VALUES (?,?,?,?)",
+            (season_year, season_type, player_or_team, datetime.datetime.utcnow().isoformat()),
+        )
+        conn.commit()
+    except Exception as exc:
+        logger.warning("Failed to record league_game_log_fetch_log: %s", exc)
+
+
 def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_team: str, conn):
     """
     Fetch one season's LeagueGameLog from stats.nba.com and cache results in DB.
@@ -638,6 +697,19 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
             return _p_mode_cache.get((season_year, season_type), {})
         return {}  # T-mode callers read from DB directly
 
+    # DB-level cache check (survives server restarts): see if this
+    # season/type/mode combination was already fully fetched before.
+    already_logged = conn.execute(
+        "SELECT 1 FROM league_game_log_fetch_log "
+        "WHERE season_year=? AND season_type=? AND player_or_team=?",
+        (season_year, season_type, player_or_team),
+    ).fetchone()
+    if already_logged:
+        _fetched_seasons.add(cache_key)
+        if player_or_team == "P":
+            return _p_mode_cache.get((season_year, season_type), {})
+        return {}
+
     # stats.nba.com LeagueGameLog is unreliable for seasons before 2000 —
     # the endpoint consistently returns an empty body for old data.
     if season_year < 2000:
@@ -646,6 +718,7 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
             season_year,
         )
         _fetched_seasons.add(cache_key)
+        _record_league_game_log_fetch(season_year, season_type, player_or_team, conn)
         if player_or_team == "P":
             _p_mode_cache[(season_year, season_type)] = {}
             return {}
@@ -686,6 +759,7 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
                     return {}
                 return {}
     _fetched_seasons.add(cache_key)
+    _record_league_game_log_fetch(season_year, season_type, player_or_team, conn)
 
     if df.empty:
         logger.warning("Empty LeagueGameLog response for %s %s mode=%s", season_year, season_type, player_or_team)

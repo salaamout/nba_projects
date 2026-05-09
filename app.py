@@ -687,21 +687,30 @@ def best3year():
         sorted_years = sorted(years.keys())
 
         if len(sorted_years) < window:
-            continue  # not enough distinct years
+            continue  # not enough distinct years with actual scores
+
+        first_year = sorted_years[0]
+        last_year  = sorted_years[-1]
+        all_years  = list(range(first_year, last_year + 1))  # dense range
+
+        if len(all_years) < window:
+            continue
 
         best_window_entry = None
 
-        for i in range(len(sorted_years) - window + 1):
-            window_years = sorted_years[i : i + window]
-            # Only consider truly consecutive years
-            if window_years[-1] - window_years[0] != window - 1:
-                continue
+        ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None,
+                     "playoff_watched": 0, "playoff_played": 0}
 
-            reg   = sum(years[y]["regular"]  for y in window_years)
-            play  = sum(years[y]["playoffs"] for y in window_years)
+        for i in range(len(all_years) - window + 1):
+            window_years = all_years[i : i + window]
+            # No consecutive-check needed — all_years is already dense
+
+            reg   = sum(years.get(y, ZERO_YEAR)["regular"]  for y in window_years)
+            play  = sum(years.get(y, ZERO_YEAR)["playoffs"] for y in window_years)
             total = reg + play
 
-            wk_vals = [years[y]["watch_kyle"] for y in window_years if years[y].get("watch_kyle") is not None]
+            wk_vals = [years[y]["watch_kyle"] for y in window_years
+                       if y in years and years[y].get("watch_kyle") is not None]
             wk_total = round(sum(wk_vals), 4) if wk_vals else None
 
             pw_watched = sum(all_playoff_watched.get((pid, y), 0) for y in window_years)
@@ -758,9 +767,13 @@ def best3year():
         games_map[gid]["game_year"] = r["game_year"]
         games_map[gid]["best_player_id"] = r["best_player_id"]
         games_map[gid]["player_ids"].append(r["player_id"])
-        player_game_counts[r["player_id"]] += 1
+        # Only count games that fall within the player's peak window
+        pid = r["player_id"]
+        game_year = r["game_year"]
+        if pid in peak_windows and peak_windows[pid][0] <= game_year <= peak_windows[pid][1]:
+            player_game_counts[pid] += 1
 
-    # Only include players watched in at least 5 games in LS comparisons
+    # Only include players watched in at least 5 peak-window games in LS comparisons
     MIN_GAMES_WATCHED = 5
     qualified_players = {pid for pid, cnt in player_game_counts.items() if cnt >= MIN_GAMES_WATCHED}
 
@@ -774,7 +787,7 @@ def best3year():
         if best_id is None:
             continue
         # Filter players whose peak window contains this game_year
-        # and who have been watched in at least MIN_GAMES_WATCHED games
+        # and who have been watched in at least MIN_GAMES_WATCHED peak-window games
         filtered = [
             pid for pid in gdata["player_ids"]
             if pid in peak_windows
@@ -931,12 +944,21 @@ def suggest_game():
             if len(sorted_years) < window:
                 continue
 
+            first_year = sorted_years[0]
+            last_year  = sorted_years[-1]
+            all_years  = list(range(first_year, last_year + 1))
+
+            if len(all_years) < window:
+                continue
+
+            ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0}
             best_entry = None
-            for i in range(len(sorted_years) - window + 1):
-                window_years = sorted_years[i : i + window]
-                if window_years[-1] - window_years[0] != window - 1:
-                    continue
-                total = sum(years[y]["regular"] + years[y]["playoffs"] for y in window_years)
+            for i in range(len(all_years) - window + 1):
+                window_years = all_years[i : i + window]
+                total = sum(
+                    years.get(y, ZERO_YEAR)["regular"] + years.get(y, ZERO_YEAR)["playoffs"]
+                    for y in window_years
+                )
                 if best_entry is None or total > best_entry["best_window_total"]:
                     best_entry = {
                         "player_id":         pid,

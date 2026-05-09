@@ -100,7 +100,22 @@ def init_db():
             season_year INTEGER NOT NULL,
             PRIMARY KEY (player_id, season_year)
         );
+
+        CREATE TABLE IF NOT EXISTS league_game_log_fetch_log (
+            season_year      INTEGER NOT NULL,
+            season_type      TEXT NOT NULL,
+            player_or_team   TEXT NOT NULL,
+            fetched_at       TEXT NOT NULL,
+            PRIMARY KEY (season_year, season_type, player_or_team)
+        );
     """)
+
+    # Migrations: bbref_playoff_fetch_log
+    existing_fetch_log_cols = [row[1] for row in cur.execute("PRAGMA table_info(bbref_playoff_fetch_log)").fetchall()]
+    if "fetch_status" not in existing_fetch_log_cols:
+        cur.execute("ALTER TABLE bbref_playoff_fetch_log ADD COLUMN fetch_status TEXT NOT NULL DEFAULT 'success'")
+    if "fetched_at" not in existing_fetch_log_cols:
+        cur.execute("ALTER TABLE bbref_playoff_fetch_log ADD COLUMN fetched_at TEXT")
 
     # Migrations: player_game_appearances
     existing_pga_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_game_appearances)").fetchall()]

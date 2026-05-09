@@ -1,0 +1,5 @@
+This file contains ideas for features to add in the future
+
+1. Suggest a game for an individual player
+2. Breakdown for a player of his record against other players at their peaks (in terms of who I thought was best)
+3. Some kind of automatic checking for selected players against the watch log and offering the option to add/remove the player
