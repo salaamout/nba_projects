@@ -377,9 +377,9 @@ New contributors (or future-you) will not understand what fields like `on_off_as
 |---|---|---|
 | ✅ P1 | ~~Add unit tests for `kyle.py`~~ — **Done.** `tests/test_kyle.py` implements all 12 cases from §7.1. | Low — pure functions, no mocks needed |
 | ✅ P1 | ~~Extract `compute_peak_windows()` — eliminate 3× duplication~~ — **Done.** `_compute_peak_windows(conn, window)` added to `app.py`; all three callers (`best3year`, `suggest_game`, `suggest_game_for_player`) now delegate to it. | Medium |
-| ✅ P1 | Add context-manager DB connection handling | Low |
-| 🔴 P1 | Add missing DB indexes | Low |
-| 🟠 P2 | Split `app.py` into service modules | High |
+| ✅ P1 | ~~Add context-manager DB connection handling~~ — **Done.** `db_conn()` context manager added to `db.py`; all ~25 route handlers in `app.py` converted from manual `get_conn()`/`conn.close()` to `with db_conn() as conn:`. Leaked-connection bugs in `best3year`, `player_watch_log`, `suggest_game`, and `suggest_game_for_player` fixed in the process. | Low |
+| ✅ P1 | ~~Add missing DB indexes~~ — **Done.** Six `CREATE INDEX IF NOT EXISTS` statements added to `init_db()` in `db.py` covering `player_stats`, `selected_players`, `player_game_appearances`, `watched_playoff_games`, and `watched_game_players`. | Low |
+| ✅ P2 | ~~Split `app.py` into service modules~~ — **Done.** `services/kyle_service.py`, `watch_log_service.py`, `player_service.py`, and `suggest_service.py` created; `app.py` reduced from 1,984 → 683 lines (routes only). `attach_watch_kyle()` eliminates the 6× copy-paste; `_game_row_to_dict` deleted; `_suggest_cache` moved to `suggest_service`; `from collections import defaultdict` and `from scraper import scrape_player_birthdate` moved to module-level imports in their respective service files. All 13 tests pass. | High |
 | 🟠 P2 | Extract `_fetch_selected_player_dicts()` helper | Low |
 | 🟠 P2 | Add Flask API tests with in-memory DB | Medium |
 | 🟠 P2 | Fix `_suggest_cache` size limit | Low |
