@@ -3,6 +3,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   setDefaultDate();
   await Promise.all([loadLeaderboard(), loadGames()]);
   bindUI();
+
+  // Auto-open modal if pre-fill params are present (from suggest card)
+  const qs = new URLSearchParams(window.location.search);
+  if (qs.has("home") || qs.has("away") || qs.has("year")) {
+    const prefill = {
+      home_team:  qs.get("home")  || "",
+      away_team:  qs.get("away")  || "",
+      game_year:  qs.get("year")  || "",
+      round:      qs.get("round") || "",
+      conference: qs.get("conf")  || "",
+    };
+    // Small delay to ensure loadGames() has started
+    setTimeout(() => openModal(prefill), 100);
+    // Clean the URL so a refresh doesn't re-open the modal
+    history.replaceState({}, "", "/watch_log");
+  }
 });
 
 function setDefaultDate() {

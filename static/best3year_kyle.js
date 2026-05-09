@@ -86,6 +86,15 @@ async function runSuggest() {
         runSuggest();
       });
     }
+    const logBtn = document.getElementById("suggest-log-btn");
+    if (logBtn) {
+      logBtn.addEventListener("click", () => {
+        const g = data.game;
+        const params = new URLSearchParams({ home: g.team1, away: g.team2, year: g.year });
+        if (g.round && g.round !== "Unknown") params.set("round", g.round);
+        window.location.href = `/watch_log?${params.toString()}`;
+      });
+    }
     card.classList.remove("hidden");
   } catch (err) {
     content.innerHTML = `<span class="suggest-error">\u2717 ${err.message}</span>`;
@@ -117,7 +126,7 @@ function renderSuggestContent(data) {
         </div>
         <div class="suggest-pair-score">Pair score: ${fmt(data.pair_score)}</div>
         <div class="suggest-actions">
-          <a href="/watch_log" class="btn-nav suggest-watchlog">&rarr; Watch Log</a>
+          <button id="suggest-log-btn" class="btn-nav btn-suggest-log">📋 Log This Game</button>
           <button id="suggest-next-btn" class="btn-nav btn-suggest-next">Next &rsaquo;</button>
         </div>
       </div>`;

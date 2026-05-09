@@ -707,3 +707,38 @@ a.player-link:hover {
 .suggest-error { color: #f78166; }
 .suggest-none  { color: #8b949e; font-style: italic; }
 
+/* ── Suggest popover (player page window picker) ──── */
+.suggest-popover {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.suggest-popover.hidden { display: none; }
+
+/* ── Focal peak sub-label ─────────────────────────── */
+.suggest-focal-peak {
+  font-size: .85rem;
+  color: var(--muted, #8b949e);
+  margin-left: 8px;
+}
+
+/* ── Log This Game button ─────────────────────────── */
+.btn-suggest-log {
+  font-size: .85rem;
+  padding: 4px 10px;
+  border-color: var(--accent-alt, #388bfd);
+  color: var(--accent-alt, #388bfd);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-suggest-log:hover {
+  background: var(--accent-alt, #388bfd);
+  color: #fff;
+}

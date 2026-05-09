@@ -17,8 +17,40 @@
       <a href="/cumulative" class="btn-nav">Cumulative</a>
       <a href="/best3year" class="btn-nav">Best 3-Year</a>
       <a href="/watch_log" class="btn-nav">Watch Log</a>
+      <button id="player-suggest-btn" class="btn-nav btn-suggest">🎬 Suggest a Game</button>
+    </div>
+    <!-- Suggest popover (window picker) -->
+    <div id="player-suggest-popover" class="suggest-popover hidden">
+      <label for="player-suggest-window" style="font-weight:600;">Peak window:</label>
+      <select id="player-suggest-window" class="btn-nav" style="padding:4px 8px;">
+        <option value="1">1 Year</option>
+        <option value="2">2 Years</option>
+        <option value="3" selected>3 Years</option>
+        <option value="4">4 Years</option>
+        <option value="5">5 Years</option>
+        <option value="6">6 Years</option>
+        <option value="7">7 Years</option>
+        <option value="8">8 Years</option>
+        <option value="9">9 Years</option>
+        <option value="10">10 Years</option>
+        <option value="11">11 Years</option>
+        <option value="12">12 Years</option>
+        <option value="13">13 Years</option>
+        <option value="14">14 Years</option>
+        <option value="15">15 Years</option>
+        <option value="16">16 Years</option>
+        <option value="17">17 Years</option>
+      </select>
+      <button id="player-suggest-go" class="btn-nav btn-suggest">Search</button>
+      <button id="player-suggest-popover-close" class="btn-nav">✕</button>
     </div>
   </header>
+
+  <!-- Suggest result card -->
+  <div id="player-suggest-card" class="suggest-card hidden" style="margin: 12px 20px 0;">
+    <button id="player-suggest-dismiss" class="suggest-dismiss" title="Dismiss">✕</button>
+    <div id="player-suggest-content"></div>
+  </div>
 
   <main>
     <div id="player-header" class="player-profile-header hidden">

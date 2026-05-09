@@ -1,4 +1,7 @@
 /* ── Boot ──────────────────────────────────────────────────────── */
+let playerSuggestSkip   = 0;
+let playerSuggestWindow = 3;
+
 document.addEventListener("DOMContentLoaded", async () => {
   const playerId = getPlayerIdFromUrl();
   if (!playerId) {
@@ -8,6 +11,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Load watch log first so _watchByYear is ready for renderProfile
   await loadWatchLog(playerId);
   await loadPlayer(playerId);
+
+  document.getElementById("player-suggest-btn").addEventListener("click", () => {
+    const popover = document.getElementById("player-suggest-popover");
+    popover.classList.toggle("hidden");
+  });
+
+  document.getElementById("player-suggest-popover-close").addEventListener("click", () => {
+    document.getElementById("player-suggest-popover").classList.add("hidden");
+  });
+
+  document.getElementById("player-suggest-go").addEventListener("click", () => {
+    playerSuggestWindow = parseInt(document.getElementById("player-suggest-window").value, 10);
+    playerSuggestSkip   = 0;
+    document.getElementById("player-suggest-popover").classList.add("hidden");
+    runPlayerSuggest();
+  });
+
+  document.getElementById("player-suggest-dismiss").addEventListener("click", () => {
+    document.getElementById("player-suggest-card").classList.add("hidden");
+    playerSuggestSkip = 0;
+  });
 });
 
 function getPlayerIdFromUrl() {
@@ -201,6 +225,88 @@ function showError(msg) {
   const el = document.getElementById("update-msg");
   el.textContent = `✗ ${msg}`;
   el.className = "update-msg error";
+}
+
+/* ── Number formatter ──────────────────────────────────────────── */
+function fmt(n) {
+  if (n === null || n === undefined) return "—";
+  return parseFloat(n).toFixed(2);
+}
+
+/* ── Suggest a Game (player page) ──────────────────────────────── */
+async function runPlayerSuggest() {
+  const spinner = document.getElementById("spinner");
+  const card    = document.getElementById("player-suggest-card");
+  const content = document.getElementById("player-suggest-content");
+  const pid     = getPlayerIdFromUrl();
+
+  spinner.classList.remove("hidden");
+  card.classList.add("hidden");
+
+  try {
+    const data = await apiFetch(
+      `/api/suggest_game_for_player?player_id=${pid}&window=${playerSuggestWindow}&skip=${playerSuggestSkip}`
+    );
+    content.innerHTML = renderPlayerSuggestContent(data);
+
+    const nextBtn = document.getElementById("player-suggest-next-btn");
+    if (nextBtn) {
+      nextBtn.addEventListener("click", () => {
+        playerSuggestSkip++;
+        runPlayerSuggest();
+      });
+    }
+
+    const logBtn = document.getElementById("player-suggest-log-btn");
+    if (logBtn) {
+      logBtn.addEventListener("click", () => {
+        const g = data.game;
+        const params = new URLSearchParams({ home: g.team1, away: g.team2, year: g.year });
+        if (g.round && g.round !== "Unknown") params.set("round", g.round);
+        window.location.href = `/watch_log?${params.toString()}`;
+      });
+    }
+
+    card.classList.remove("hidden");
+  } catch (err) {
+    content.innerHTML = `<span class="suggest-error">✗ ${err.message}</span>`;
+    card.classList.remove("hidden");
+  } finally {
+    spinner.classList.add("hidden");
+  }
+}
+
+function renderPlayerSuggestContent(data) {
+  if (data.result === "found") {
+    const g   = data.game;
+    const fp  = data.focal_player;
+    const opp = data.opponent;
+    const gameInfo = g.team1 && g.team2 ? `${g.team1} vs ${g.team2}` : "Unknown matchup";
+    return `
+      <div class="suggest-found">
+        <div class="suggest-pair">
+          <strong>vs <a href="/player/${opp.id}" class="player-link">${opp.name}</a></strong>
+          <span class="suggest-peak">${opp.peak} &mdash; ${fmt(opp.score)}</span>
+          <span class="suggest-peak suggest-focal-peak">(${fp.name} peak: ${fp.peak} &mdash; ${fmt(fp.score)})</span>
+        </div>
+        <div class="suggest-game-info">
+          <span class="suggest-game-label">Suggested game:</span>
+          <strong>${gameInfo}</strong>
+          &bull; ${g.year}${g.game_date ? ` &bull; ${g.game_date}` : ""}
+        </div>
+        <div class="suggest-actions">
+          <button id="player-suggest-log-btn" class="btn-nav btn-suggest-log">📋 Log This Game</button>
+          <button id="player-suggest-next-btn" class="btn-nav btn-suggest-next">Next &rsaquo;</button>
+        </div>
+      </div>`;
+  }
+  if (data.result === "missing_data") {
+    return `<span class="suggest-error">Appearance data missing for <strong>${data.player}</strong>. Run a scrape on their player page first.</span>`;
+  }
+  if (data.result === "none") {
+    return `<span class="suggest-none">${data.message || "No suggestion available."}</span>`;
+  }
+  return `<span class="suggest-error">${data.message || "An error occurred."}</span>`;
 }
 
 /* ── API helper ────────────────────────────────────────────────── */
