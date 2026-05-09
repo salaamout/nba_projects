@@ -219,37 +219,9 @@ def get_selected():
         season_row = conn.execute(
             "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
         ).fetchone()
-        rows = conn.execute(
-            """
-            SELECT
-                sp.id            AS selected_id,
-                p.id             AS player_id,
-                p.name,
-                ps.id            AS stats_id,
-                ps.minutes,
-                ps.usage_rate,
-                ps.true_shooting_pct,
-                ps.assist_rate,
-                ps.turnover_pct,
-                ps.on_court_rating,
-                ps.on_off_diff,
-                ps.bpm,
-                ps.defense,
-                ps.position,
-                ps.playoff_games,
-                ps.on_off_asterisk
-            FROM selected_players sp
-            JOIN players p       ON p.id  = sp.player_id
-            JOIN player_stats ps ON ps.player_id = sp.player_id
-                                 AND ps.season_id = sp.season_id
-            WHERE sp.season_id = ?
-            ORDER BY p.name
-            """,
-            (season_id,),
-        ).fetchall()
 
         season_type  = season_row["season_type"] if season_row else "regular"
-        player_dicts = [_row_to_dict(r) for r in rows]
+        player_dicts = kyle_service.fetch_selected_player_dicts(conn, season_id)
 
         if season_type == "playoffs" and season_row:
             watch_map = watch_log_service.get_watch_kyle_by_player(conn, season_row["season_year"])
@@ -319,23 +291,7 @@ def get_all_players():
         season_type = season_row["season_type"] if season_row else "regular"
         season_year = season_row["season_year"] if season_row else None
 
-        selected_rows = conn.execute(
-            """
-            SELECT
-                p.id AS player_id, p.name,
-                ps.id AS stats_id,
-                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
-                ps.on_off_asterisk
-            FROM selected_players sp
-            JOIN players p       ON p.id  = sp.player_id
-            JOIN player_stats ps ON ps.player_id = sp.player_id
-                                 AND ps.season_id = sp.season_id
-            WHERE sp.season_id = ?
-            """,
-            (season_id,),
-        ).fetchall()
+        selected_rows = kyle_service.fetch_selected_player_dicts(conn, season_id)
 
         all_rows = conn.execute(
             """
@@ -354,7 +310,7 @@ def get_all_players():
             (season_id,),
         ).fetchall()
 
-        selected_dicts = [_row_to_dict(r) for r in selected_rows]
+        selected_dicts = selected_rows  # already list[dict] from fetch_selected_player_dicts
 
         watch_map = {}
         if season_type == "playoffs" and season_year:

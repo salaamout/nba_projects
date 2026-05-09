@@ -18,6 +18,7 @@ from __future__ import annotations
 import time
 import logging
 import re
+import threading
 from datetime import datetime
 
 import requests
@@ -60,6 +61,7 @@ except ImportError:
 # Tracks which (season_year, season_type) pairs have already been fetched from
 # stats.nba.com in the current process so we only call the API once per season.
 _fetched_seasons: set[tuple[int, str, str]] = set()  # (year, season_type, "T"|"P")
+_fetched_seasons_lock = threading.Lock()
 
 # In-memory cache for P-mode results: (season_year, season_type) → dict[nba_player_id → list[dict]]
 _p_mode_cache: dict[tuple[int, str], dict[int, list[dict]]] = {}
@@ -68,6 +70,7 @@ _p_mode_cache: dict[tuple[int, str], dict[int, list[dict]]] = {}
 # BBRef this process run, so we don't re-fetch if the player simply had no
 # playoff games that year (nothing gets inserted, so the DB cache check misses).
 _fetched_bbref_seasons: set[tuple[int, int]] = set()
+_fetched_bbref_seasons_lock = threading.Lock()
 
 # Mapping from bbref team abbreviations → nba_api/stats.nba.com abbreviations.
 # Only entries where the two systems DIFFER are needed; the fallback in
@@ -264,7 +267,9 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
     bbref_cache_key = (player_id, season_year)
 
     # Check in-memory guard first (fast path within a single process run).
-    if bbref_cache_key in _fetched_bbref_seasons:
+    with _fetched_bbref_seasons_lock:
+        already_in_mem = bbref_cache_key in _fetched_bbref_seasons
+    if already_in_mem:
         all_cached = conn.execute(
             "SELECT game_date FROM player_game_appearances "
             "WHERE player_id=? AND season_year=? AND season_type='playoffs'",
@@ -279,7 +284,8 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
         (player_id, season_year),
     ).fetchone()
     if already_fetched and already_fetched["fetch_status"] == "success":
-        _fetched_bbref_seasons.add(bbref_cache_key)
+        with _fetched_bbref_seasons_lock:
+            _fetched_bbref_seasons.add(bbref_cache_key)
         all_cached = conn.execute(
             "SELECT game_date FROM player_game_appearances "
             "WHERE player_id=? AND season_year=? AND season_type='playoffs'",
@@ -288,7 +294,8 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
         return {r["game_date"] for r in all_cached}
     if already_fetched and already_fetched["fetch_status"] == "no_table":
         # Player legitimately didn't play in the playoffs that year — don't retry.
-        _fetched_bbref_seasons.add(bbref_cache_key)
+        with _fetched_bbref_seasons_lock:
+            _fetched_bbref_seasons.add(bbref_cache_key)
         return set()
     # If status is 'error', fall through and retry.
 
@@ -385,7 +392,8 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
         dates.add(game_date)
 
     conn.commit()
-    _fetched_bbref_seasons.add(bbref_cache_key)
+    with _fetched_bbref_seasons_lock:
+        _fetched_bbref_seasons.add(bbref_cache_key)
     conn.execute(
         "INSERT INTO bbref_playoff_fetch_log (player_id, season_year, fetch_status, fetched_at) "
         "VALUES (?,?,?,?) ON CONFLICT(player_id, season_year) DO UPDATE SET "
@@ -691,11 +699,12 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
              returns dict[nba_player_id → list[{game_date, team_abbr}]]
     """
     cache_key = (season_year, season_type, player_or_team)
-    if cache_key in _fetched_seasons:
-        # Already fetched this run — data is in DB / in-memory cache
-        if player_or_team == "P":
-            return _p_mode_cache.get((season_year, season_type), {})
-        return {}  # T-mode callers read from DB directly
+    with _fetched_seasons_lock:
+        if cache_key in _fetched_seasons:
+            # Already fetched this run — data is in DB / in-memory cache
+            if player_or_team == "P":
+                return _p_mode_cache.get((season_year, season_type), {})
+            return {}  # T-mode callers read from DB directly
 
     # DB-level cache check (survives server restarts): see if this
     # season/type/mode combination was already fully fetched before.
@@ -705,9 +714,10 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
         (season_year, season_type, player_or_team),
     ).fetchone()
     if already_logged:
-        _fetched_seasons.add(cache_key)
-        if player_or_team == "P":
-            return _p_mode_cache.get((season_year, season_type), {})
+        with _fetched_seasons_lock:
+            _fetched_seasons.add(cache_key)
+            if player_or_team == "P":
+                return _p_mode_cache.get((season_year, season_type), {})
         return {}
 
     # stats.nba.com LeagueGameLog is unreliable for seasons before 2000 —
@@ -717,11 +727,12 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
             "Skipping LeagueGameLog for season=%s (pre-2000, use BBRef instead)",
             season_year,
         )
-        _fetched_seasons.add(cache_key)
-        _record_league_game_log_fetch(season_year, season_type, player_or_team, conn)
-        if player_or_team == "P":
-            _p_mode_cache[(season_year, season_type)] = {}
-            return {}
+        with _fetched_seasons_lock:
+            _fetched_seasons.add(cache_key)
+            _record_league_game_log_fetch(season_year, season_type, player_or_team, conn)
+            if player_or_team == "P":
+                _p_mode_cache[(season_year, season_type)] = {}
+                return {}
         return {}
 
     logger.info(
@@ -755,16 +766,19 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
                     season_year, season_type, player_or_team,
                 )
                 if player_or_team == "P":
-                    _p_mode_cache[(season_year, season_type)] = {}
+                    with _fetched_seasons_lock:
+                        _p_mode_cache[(season_year, season_type)] = {}
                     return {}
                 return {}
-    _fetched_seasons.add(cache_key)
+    with _fetched_seasons_lock:
+        _fetched_seasons.add(cache_key)
     _record_league_game_log_fetch(season_year, season_type, player_or_team, conn)
 
     if df.empty:
         logger.warning("Empty LeagueGameLog response for %s %s mode=%s", season_year, season_type, player_or_team)
         if player_or_team == "P":
-            _p_mode_cache[(season_year, season_type)] = {}
+            with _fetched_seasons_lock:
+                _p_mode_cache[(season_year, season_type)] = {}
             return {}
         return {}
 
@@ -825,7 +839,8 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
                     )
         conn.commit()
 
-        _p_mode_cache[(season_year, season_type)] = result
+        with _fetched_seasons_lock:
+            _p_mode_cache[(season_year, season_type)] = result
         return result
 
 

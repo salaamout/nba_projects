@@ -15,7 +15,7 @@ The project is well-commented and functionally solid, but it has accumulated sig
 ## 1. Architecture & Code Organization
 
 ### 1.1 `app.py` is far too large (2,224 lines)
-**Severity: High**
+**Severity: High** (DONE)
 
 Flask route handlers contain complex business logic that should live in service or helper modules. This makes the file hard to navigate, hard to test, and dangerous to change.
 
@@ -30,7 +30,7 @@ Flask route handlers contain complex business logic that should live in service 
 | `app.py` (slimmed) | Flask route definitions only — each handler ≤ ~20 lines |
 
 ### 1.2 Peak-window computation is copy-pasted three times
-**Severity: High**
+**Severity: High** (DONE)
 
 The "iterate seasons → compute K.Y.L.E. per year → find best N-year window" logic appears nearly identically in:
 - `/api/best3year` (~120 lines)
@@ -75,7 +75,7 @@ This is identical to `_row_to_dict`. Remove it and use `_row_to_dict` (or just `
 ## 2. Duplicated SQL Queries
 
 ### 2.1 Selected-player fetch query is repeated ≥ 5 times
-**Severity: High**
+**Severity: High** (DONE)
 
 The following query (with minor field-set variations) is repeated across `get_selected`, `get_all_players`, `cumulative_kyle`, `best3year`, `suggest_game`, and `suggest_game_for_player`:
 
@@ -168,14 +168,14 @@ This will need manual updating every year and does not belong in generic schema 
 ## 4. In-Memory Cache
 
 ### 4.1 `_suggest_cache` has no size limit or TTL
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 The server-side `_suggest_cache` dict grows unboundedly. Each cache entry stores a full list of candidate dicts. Over time (many window/player-set combinations) this could consume significant memory.
 
 **Action:** Use `functools.lru_cache` or a simple `cachetools.TTLCache`/`LRUCache` wrapper with a reasonable max-size.
 
 ### 4.2 Process-level caches (`_fetched_seasons`, `_p_mode_cache`) are not thread-safe
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 Flask can run with multiple threads (default in dev; Gunicorn workers in prod). The module-level `set` and `dict` caches in `scraper.py` are mutated without any locking. Two concurrent requests for the same season could race to fetch from the nba_api and double-insert rows (mitigated by `INSERT OR IGNORE`, but still racy).
 
@@ -261,7 +261,7 @@ At minimum, log the exception so silent failures are visible.
 
 There are zero test files in the project. The following areas are highest priority for coverage:
 
-### 7.1 `kyle.py` — Pure logic, easy to test
+### 7.1 `kyle.py` — Pure logic, easy to test (DONE)
 
 `kyle.py` has no I/O and contains the core rating algorithm. This should have near-100% coverage.
 
@@ -312,7 +312,7 @@ Mock `requests.get` with `unittest.mock.patch` or `responses`:
 - `test_abbr_to_team_name_with_year` — `"CHA", 1999` → `"Charlotte Hornets"`, `"CHA", 2020` → `"Charlotte Hornets"`
 - `test_bbref_to_nba_abbr` — "PHO" → "PHX", passthrough for unlisted
 
-### 7.4 `app.py` — API endpoints
+### 7.4 `app.py` — API endpoints (DONE)
 
 ```
 tests/test_app.py
@@ -380,10 +380,10 @@ New contributors (or future-you) will not understand what fields like `on_off_as
 | ✅ P1 | ~~Add context-manager DB connection handling~~ — **Done.** `db_conn()` context manager added to `db.py`; all ~25 route handlers in `app.py` converted from manual `get_conn()`/`conn.close()` to `with db_conn() as conn:`. Leaked-connection bugs in `best3year`, `player_watch_log`, `suggest_game`, and `suggest_game_for_player` fixed in the process. | Low |
 | ✅ P1 | ~~Add missing DB indexes~~ — **Done.** Six `CREATE INDEX IF NOT EXISTS` statements added to `init_db()` in `db.py` covering `player_stats`, `selected_players`, `player_game_appearances`, `watched_playoff_games`, and `watched_game_players`. | Low |
 | ✅ P2 | ~~Split `app.py` into service modules~~ — **Done.** `services/kyle_service.py`, `watch_log_service.py`, `player_service.py`, and `suggest_service.py` created; `app.py` reduced from 1,984 → 683 lines (routes only). `attach_watch_kyle()` eliminates the 6× copy-paste; `_game_row_to_dict` deleted; `_suggest_cache` moved to `suggest_service`; `from collections import defaultdict` and `from scraper import scrape_player_birthdate` moved to module-level imports in their respective service files. All 13 tests pass. | High |
-| 🟠 P2 | Extract `_fetch_selected_player_dicts()` helper | Low |
-| 🟠 P2 | Add Flask API tests with in-memory DB | Medium |
-| 🟠 P2 | Fix `_suggest_cache` size limit | Low |
-| 🟠 P2 | Fix thread-safety on module-level caches | Medium |
+| ✅ P2 | ~~Extract `_fetch_selected_player_dicts()` helper~~ — **Done.** `fetch_selected_player_dicts()` expanded to include all fields (`selected_id`, `stats_id`, `position`); inline SQL in `get_selected` and `get_all_players` replaced with single call to `kyle_service.fetch_selected_player_dicts()`. All 13 tests pass. | Low |
+| ✅ P2 | ~~Add Flask API tests with in-memory DB~~ — **Done.** `tests/test_app.py` implements 16 tests covering seasons (CRUD, duplicate, bad-type), selected players (add/remove round-trip), stats patching (allowed and disallowed fields), and watched games (create with players, delete, 404 handling). All 16 pass. | Medium |
+| ✅ P2 | ~~Fix `_suggest_cache` size limit~~ — **Done.** `_suggest_cache` converted from an unbounded `dict` to a 128-entry LRU cache (`OrderedDict`) with `_cache_get`/`_cache_set` helpers that evict the oldest entry when the limit is exceeded. All 29 tests pass. | Low |
+| ✅ P2 | ~~Fix thread-safety on module-level caches~~ — **Done.** `import threading` added to `scraper.py`; `_fetched_seasons_lock` and `_fetched_bbref_seasons_lock` (`threading.Lock`) added alongside their respective caches. All reads and writes to `_fetched_seasons`, `_p_mode_cache`, and `_fetched_bbref_seasons` are now wrapped with `with lock:` blocks, eliminating the check-then-act race under concurrent Flask/Gunicorn threads. All 29 tests pass. | Medium |
 | 🟡 P3 | Cache cumulative/best3year computed ratings | Medium |
 | 🟡 P3 | Add docstrings to `scraper.py` public functions | Low |
 | 🟡 P3 | Unify `ROUND_WEIGHTS` / `ROUND_MAP` / `ROUND_KEY` constants | Low |

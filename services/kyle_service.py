@@ -22,21 +22,27 @@ from services.watch_log_service import get_watch_kyle_by_player
 def fetch_selected_player_dicts(conn, season_id: int) -> list[dict]:
     """Return selected players for a season as a list of plain dicts.
 
-    Fetches the canonical set of stat columns needed by ``kyle.calculate``.
+    Fetches the canonical set of stat columns needed by ``kyle.calculate``,
+    plus ``selected_id``, ``stats_id``, and ``position`` for endpoints that
+    need them (extra fields are ignored by the rating functions).
     """
     rows = conn.execute(
         """
         SELECT
-            p.id AS player_id, p.name,
+            sp.id            AS selected_id,
+            p.id             AS player_id,
+            p.name,
+            ps.id            AS stats_id,
             ps.minutes, ps.usage_rate, ps.true_shooting_pct,
             ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-            ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk,
-            ps.playoff_games
+            ps.on_off_diff, ps.bpm, ps.defense, ps.position,
+            ps.on_off_asterisk, ps.playoff_games
         FROM selected_players sp
         JOIN players p       ON p.id  = sp.player_id
         JOIN player_stats ps ON ps.player_id = sp.player_id
                              AND ps.season_id = sp.season_id
         WHERE sp.season_id = ?
+        ORDER BY p.name
         """,
         (season_id,),
     ).fetchall()

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+from collections import OrderedDict
 
 from scraper import (
     _backfill_opp_abbr,
@@ -26,8 +27,28 @@ logger = logging.getLogger(__name__)
 # key : (window, selected_ids_tuple, watch_log_count) or
 #       ("player", player_id, window, selected_ids_tuple, watch_log_count)
 # value: fully-built, ordered list of candidate dicts
+#
+# Bounded to _SUGGEST_CACHE_MAX_SIZE entries (LRU eviction via OrderedDict).
 # ---------------------------------------------------------------------------
-_suggest_cache: dict = {}
+_SUGGEST_CACHE_MAX_SIZE = 128
+_suggest_cache: OrderedDict = OrderedDict()
+
+
+def _cache_set(key, value) -> None:
+    """Insert *value* at *key*, evicting the oldest entry when over the limit."""
+    if key in _suggest_cache:
+        _suggest_cache.move_to_end(key)
+    _suggest_cache[key] = value
+    while len(_suggest_cache) > _SUGGEST_CACHE_MAX_SIZE:
+        _suggest_cache.popitem(last=False)
+
+
+def _cache_get(key):
+    """Return the cached value for *key* (moving it to MRU position), or ``None``."""
+    if key not in _suggest_cache:
+        return None
+    _suggest_cache.move_to_end(key)
+    return _suggest_cache[key]
 
 
 # ---------------------------------------------------------------------------
@@ -181,17 +202,17 @@ def get_suggestions(conn, window: int, skip: int) -> dict:
     """
     cache_key = _cache_key(conn, window)
 
-    if cache_key in _suggest_cache:
-        candidates = _suggest_cache[cache_key]
-        if skip < len(candidates):
-            return candidates[skip]
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        if skip < len(cached):
+            return cached[skip]
         return {"result": "none", "message": "No unwatched games found for any overlapping pair."}
 
     # ── Cache miss — build the full candidate list ───────────────────────────
     peaks, _ = compute_peak_windows(conn, window)
 
     if len(peaks) < 2:
-        _suggest_cache[cache_key] = []
+        _cache_set(cache_key, [])
         return {"result": "none", "message": "No overlapping peak windows."}
 
     player_ids = [p["player_id"] for p in peaks]
@@ -214,7 +235,7 @@ def get_suggestions(conn, window: int, skip: int) -> dict:
             pairs.append((pair_score, a, b, overlap_start, overlap_end))
 
     if not pairs:
-        _suggest_cache[cache_key] = []
+        _cache_set(cache_key, [])
         return {"result": "none", "message": "No players with overlapping peak windows."}
 
     pairs.sort(key=lambda x: x[0], reverse=True)
@@ -266,7 +287,7 @@ def get_suggestions(conn, window: int, skip: int) -> dict:
                 },
             })
 
-    _suggest_cache[cache_key] = candidates
+    _cache_set(cache_key, candidates)
 
     if skip < len(candidates):
         return candidates[skip]
@@ -285,10 +306,10 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
     """
     cache_key = _player_cache_key(conn, player_id, window)
 
-    if cache_key in _suggest_cache:
-        candidates = _suggest_cache[cache_key]
-        if skip < len(candidates):
-            return candidates[skip]
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        if skip < len(cached):
+            return cached[skip]
         return {
             "result": "none",
             "message": "All games featuring this player have been watched. Impressive.",
@@ -307,7 +328,7 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
     ).fetchall()
 
     if not playoff_season_rows:
-        _suggest_cache[cache_key] = []
+        _cache_set(cache_key, [])
         return {"result": "none", "message": "Focal player has no playoff seasons in the database."}
 
     playoff_years = {r["season_year"] for r in playoff_season_rows}
@@ -317,7 +338,7 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
 
     focal_peak_entry = next((p for p in all_peaks if p["player_id"] == player_id), None)
     if focal_peak_entry is None:
-        _suggest_cache[cache_key] = []
+        _cache_set(cache_key, [])
         return {
             "result": "none",
             "message": "Focal player has fewer consecutive seasons than the selected window.",
@@ -339,7 +360,7 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
     )
 
     if not overlapping_opps:
-        _suggest_cache[cache_key] = []
+        _cache_set(cache_key, [])
         return {"result": "none", "message": "No selected players with overlapping peak windows."}
 
     # Meta for all players involved
@@ -426,7 +447,7 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
     for c in candidates:
         del c["_opp_score"]
 
-    _suggest_cache[cache_key] = candidates
+    _cache_set(cache_key, candidates)
 
     if candidates:
         if skip < len(candidates):
