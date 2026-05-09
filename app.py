@@ -2,7 +2,7 @@ import logging
 from datetime import date as _date
 from flask import Flask, jsonify, request, render_template, abort
 
-from db import init_db, get_conn
+from db import init_db, get_conn, db_conn
 from scraper import run_scrape, _get_player_appearances, _fetch_bbref_playoff_gamelog, _backfill_opp_abbr, abbr_to_team_name, abbr_to_team_name_variants, _get_nba_id_for_player
 import kyle
 
@@ -107,6 +107,133 @@ def _get_watch_kyle_by_player(conn, season_year):
     return result
 
 
+def _compute_peak_windows(conn, window: int) -> tuple[list[dict], dict]:
+    """Compute each selected player's best consecutive N-year K.Y.L.E. window.
+
+    This is the single source of truth for peak-window logic shared by
+    ``best3year``, ``suggest_game``, and ``suggest_game_for_player``.
+
+    Parameters
+    ----------
+    conn   : active DB connection
+    window : number of consecutive seasons in the window (caller must clamp)
+
+    Returns
+    -------
+    peaks : list of dicts, each with keys:
+        player_id, name, best_start_year, best_end_year, best_window_total
+    player_years : dict mapping player_id →
+        {"name": str, "years": {year: {"regular": float, "playoffs": float,
+                                       "watch_kyle": float | None}}}
+        The ``player_years`` structure is returned for callers (e.g. best3year)
+        that need per-year watch_kyle data to compute supplementary totals.
+    """
+    seasons = conn.execute(
+        """
+        SELECT DISTINCT s.id, s.season_year, s.season_type
+        FROM seasons s
+        JOIN selected_players sp ON sp.season_id = s.id
+        ORDER BY s.season_year
+        """
+    ).fetchall()
+
+    player_years: dict[int, dict] = {}
+
+    for season in seasons:
+        season_id   = season["id"]
+        season_year = season["season_year"]
+        season_type = season["season_type"]
+
+        rows = conn.execute(
+            """
+            SELECT
+                p.id AS player_id, p.name,
+                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk,
+                ps.playoff_games
+            FROM selected_players sp
+            JOIN players p       ON p.id  = sp.player_id
+            JOIN player_stats ps ON ps.player_id = sp.player_id
+                                 AND ps.season_id = sp.season_id
+            WHERE sp.season_id = ?
+            """,
+            (season_id,),
+        ).fetchall()
+
+        if not rows:
+            continue
+
+        player_dicts = [_row_to_dict(r) for r in rows]
+
+        watch_map = {}
+        if season_type == "playoffs":
+            watch_map = _get_watch_kyle_by_player(conn, season_year)
+            for d in player_dicts:
+                wk = watch_map.get(d["player_id"])
+                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+                d["watch_best_count"]    = wk["best_count"]    if wk else None
+                d["watch_total_watched"] = wk["total_watched"] if wk else None
+
+        calculated = kyle.calculate(player_dicts, season_type=season_type)
+
+        for p in calculated:
+            pid    = p["player_id"]
+            rating = p.get("kyle_rating")
+            if rating is None:
+                continue
+            if pid not in player_years:
+                player_years[pid] = {"name": p["name"], "years": {}}
+            yr_data = player_years[pid]["years"].setdefault(
+                season_year, {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None}
+            )
+            if season_type == "regular":
+                yr_data["regular"] += rating
+            else:
+                yr_data["playoffs"] += rating
+                wk = watch_map.get(pid)
+                if wk and wk.get("watch_kyle") is not None:
+                    yr_data["watch_kyle"] = wk["watch_kyle"]
+
+    ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None}
+    peaks: list[dict] = []
+
+    for pid, pdata in player_years.items():
+        name  = pdata["name"]
+        years = pdata["years"]
+        sorted_years = sorted(years.keys())
+
+        if len(sorted_years) < window:
+            continue
+
+        first_year = sorted_years[0]
+        last_year  = sorted_years[-1]
+        all_years  = list(range(first_year, last_year + 1))
+
+        if len(all_years) < window:
+            continue
+
+        best_entry = None
+        for i in range(len(all_years) - window + 1):
+            window_years = all_years[i: i + window]
+            total = sum(
+                years.get(y, ZERO_YEAR)["regular"] + years.get(y, ZERO_YEAR)["playoffs"]
+                for y in window_years
+            )
+            if best_entry is None or total > best_entry["best_window_total"]:
+                best_entry = {
+                    "player_id":         pid,
+                    "name":              name,
+                    "best_start_year":   window_years[0],
+                    "best_end_year":     window_years[-1],
+                    "best_window_total": round(total, 4),
+                }
+        if best_entry:
+            peaks.append(best_entry)
+
+    return peaks, player_years
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -120,9 +247,8 @@ def index():
 
 @app.route("/api/seasons")
 def get_seasons():
-    conn = get_conn()
-    rows = conn.execute("SELECT * FROM seasons ORDER BY season_year DESC, season_type").fetchall()
-    conn.close()
+    with db_conn() as conn:
+        rows = conn.execute("SELECT * FROM seasons ORDER BY season_year DESC, season_type").fetchall()
     return jsonify([_row_to_dict(r) for r in rows])
 
 
@@ -143,15 +269,13 @@ def create_season():
     type_label = "Regular Season" if season_type == "regular" else "Playoffs"
     label = f"{year} {type_label}"
 
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         # Prevent exact duplicates
         existing = conn.execute(
             "SELECT id FROM seasons WHERE season_year = ? AND season_type = ?",
             (year, season_type),
         ).fetchone()
         if existing:
-            conn.close()
             return jsonify({"error": f"Season '{label}' already exists", "id": existing["id"]}), 409
 
         cur = conn.execute(
@@ -161,8 +285,6 @@ def create_season():
         new_id = cur.lastrowid
         conn.commit()
         row = conn.execute("SELECT * FROM seasons WHERE id = ?", (new_id,)).fetchone()
-    finally:
-        conn.close()
 
     return jsonify(_row_to_dict(row)), 201
 
@@ -177,8 +299,7 @@ def nearest_selected(season_id):
     If multiple seasons tie on distance, prefer the one with the most
     selected players.
     """
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         # Get the year of the target season
         target = conn.execute(
             "SELECT season_year FROM seasons WHERE id = ?", (season_id,)
@@ -217,8 +338,6 @@ def nearest_selected(season_id):
                 (best["id"],),
             ).fetchall()
         ]
-    finally:
-        conn.close()
 
     return jsonify({"player_ids": player_ids, "source_season_id": best["id"]})
 
@@ -231,15 +350,12 @@ def delete_season(season_id):
     seasons table itself. Intended for cleaning up accidentally created
     or no-longer-needed seasons from the UI.
     """
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         # Remove dependent rows first to satisfy foreign keys.
         conn.execute("DELETE FROM selected_players WHERE season_id = ?", (season_id,))
         conn.execute("DELETE FROM player_stats   WHERE season_id = ?", (season_id,))
         deleted = conn.execute("DELETE FROM seasons WHERE id = ?", (season_id,)).rowcount
         conn.commit()
-    finally:
-        conn.close()
 
     if not deleted:
         abort(404)
@@ -253,18 +369,17 @@ def get_players():
     season_id = request.args.get("season_id", type=int)
     if not season_id:
         return jsonify({"error": "season_id required"}), 400
-    conn = get_conn()
-    rows = conn.execute(
-        """
-        SELECT p.id, p.name
-        FROM players p
-        JOIN player_stats ps ON ps.player_id = p.id
-        WHERE ps.season_id = ?
-        ORDER BY p.name
-        """,
-        (season_id,),
-    ).fetchall()
-    conn.close()
+    with db_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.id, p.name
+            FROM players p
+            JOIN player_stats ps ON ps.player_id = p.id
+            WHERE ps.season_id = ?
+            ORDER BY p.name
+            """,
+            (season_id,),
+        ).fetchall()
     return jsonify([_row_to_dict(r) for r in rows])
 
 
@@ -276,52 +391,50 @@ def get_selected():
     if not season_id:
         return jsonify({"error": "season_id required"}), 400
 
-    conn = get_conn()
-    season_row = conn.execute(
-        "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
-    ).fetchone()
-    rows = conn.execute(
-        """
-        SELECT
-            sp.id            AS selected_id,
-            p.id             AS player_id,
-            p.name,
-            ps.id            AS stats_id,
-            ps.minutes,
-            ps.usage_rate,
-            ps.true_shooting_pct,
-            ps.assist_rate,
-            ps.turnover_pct,
-            ps.on_court_rating,
-            ps.on_off_diff,
-            ps.bpm,
-            ps.defense,
-            ps.position,
-            ps.playoff_games,
-            ps.on_off_asterisk
-        FROM selected_players sp
-        JOIN players p       ON p.id  = sp.player_id
-        JOIN player_stats ps ON ps.player_id = sp.player_id
-                             AND ps.season_id = sp.season_id
-        WHERE sp.season_id = ?
-        ORDER BY p.name
-        """,
-        (season_id,),
-    ).fetchall()
+    with db_conn() as conn:
+        season_row = conn.execute(
+            "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
+        ).fetchone()
+        rows = conn.execute(
+            """
+            SELECT
+                sp.id            AS selected_id,
+                p.id             AS player_id,
+                p.name,
+                ps.id            AS stats_id,
+                ps.minutes,
+                ps.usage_rate,
+                ps.true_shooting_pct,
+                ps.assist_rate,
+                ps.turnover_pct,
+                ps.on_court_rating,
+                ps.on_off_diff,
+                ps.bpm,
+                ps.defense,
+                ps.position,
+                ps.playoff_games,
+                ps.on_off_asterisk
+            FROM selected_players sp
+            JOIN players p       ON p.id  = sp.player_id
+            JOIN player_stats ps ON ps.player_id = sp.player_id
+                                 AND ps.season_id = sp.season_id
+            WHERE sp.season_id = ?
+            ORDER BY p.name
+            """,
+            (season_id,),
+        ).fetchall()
 
-    season_type = season_row["season_type"] if season_row else "regular"
-    player_dicts = [_row_to_dict(r) for r in rows]
+        season_type = season_row["season_type"] if season_row else "regular"
+        player_dicts = [_row_to_dict(r) for r in rows]
 
-    if season_type == "playoffs" and season_row:
-        watch_map = _get_watch_kyle_by_player(conn, season_row["season_year"])
-        for d in player_dicts:
-            wk = watch_map.get(d["player_id"])
-            d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-            d["watch_best_count"]    = wk["best_count"]    if wk else None
-            d["watch_total_watched"] = wk["total_watched"] if wk else None
-            d["watch_raw_score"]     = wk["raw_score"]     if wk else None
-
-    conn.close()
+        if season_type == "playoffs" and season_row:
+            watch_map = _get_watch_kyle_by_player(conn, season_row["season_year"])
+            for d in player_dicts:
+                wk = watch_map.get(d["player_id"])
+                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+                d["watch_best_count"]    = wk["best_count"]    if wk else None
+                d["watch_total_watched"] = wk["total_watched"] if wk else None
+                d["watch_raw_score"]     = wk["raw_score"]     if wk else None
 
     calculated = kyle.calculate(player_dicts, season_type=season_type)
     return jsonify(calculated)
@@ -335,24 +448,20 @@ def add_selected():
     if not player_id or not season_id:
         return jsonify({"error": "player_id and season_id required"}), 400
 
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO selected_players (player_id, season_id) VALUES (?, ?)",
             (player_id, season_id),
         )
         conn.commit()
-    finally:
-        conn.close()
     return jsonify({"ok": True}), 201
 
 
 @app.route("/api/selected/<int:selected_id>", methods=["DELETE"])
 def remove_selected(selected_id):
-    conn = get_conn()
-    conn.execute("DELETE FROM selected_players WHERE id = ?", (selected_id,))
-    conn.commit()
-    conn.close()
+    with db_conn() as conn:
+        conn.execute("DELETE FROM selected_players WHERE id = ?", (selected_id,))
+        conn.commit()
     return jsonify({"ok": True})
 
 
@@ -366,66 +475,63 @@ def get_all_players():
     if not season_id:
         return jsonify({"error": "season_id required"}), 400
 
-    conn = get_conn()
+    with db_conn() as conn:
+        season_row = conn.execute(
+            "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
+        ).fetchone()
+        season_type = season_row["season_type"] if season_row else "regular"
+        season_year = season_row["season_year"] if season_row else None
 
-    season_row = conn.execute(
-        "SELECT season_type, season_year FROM seasons WHERE id = ?", (season_id,)
-    ).fetchone()
-    season_type = season_row["season_type"] if season_row else "regular"
-    season_year = season_row["season_year"] if season_row else None
+        # Fetch selected players to compute bounds
+        selected_rows = conn.execute(
+            """
+            SELECT
+                p.id AS player_id, p.name,
+                ps.id AS stats_id,
+                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
+                ps.on_off_asterisk
+            FROM selected_players sp
+            JOIN players p       ON p.id  = sp.player_id
+            JOIN player_stats ps ON ps.player_id = sp.player_id
+                                 AND ps.season_id = sp.season_id
+            WHERE sp.season_id = ?
+            """,
+            (season_id,),
+        ).fetchall()
 
-    # Fetch selected players to compute bounds
-    selected_rows = conn.execute(
-        """
-        SELECT
-            p.id AS player_id, p.name,
-            ps.id AS stats_id,
-            ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-            ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-            ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
-            ps.on_off_asterisk
-        FROM selected_players sp
-        JOIN players p       ON p.id  = sp.player_id
-        JOIN player_stats ps ON ps.player_id = sp.player_id
-                             AND ps.season_id = sp.season_id
-        WHERE sp.season_id = ?
-        """,
-        (season_id,),
-    ).fetchall()
+        # Fetch ALL players with stats for this season
+        all_rows = conn.execute(
+            """
+            SELECT
+                p.id AS player_id, p.name,
+                ps.id AS stats_id,
+                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
+                ps.on_off_asterisk
+            FROM players p
+            JOIN player_stats ps ON ps.player_id = p.id
+            WHERE ps.season_id = ?
+            ORDER BY p.name
+            """,
+            (season_id,),
+        ).fetchall()
 
-    # Fetch ALL players with stats for this season
-    all_rows = conn.execute(
-        """
-        SELECT
-            p.id AS player_id, p.name,
-            ps.id AS stats_id,
-            ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-            ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-            ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
-            ps.on_off_asterisk
-        FROM players p
-        JOIN player_stats ps ON ps.player_id = p.id
-        WHERE ps.season_id = ?
-        ORDER BY p.name
-        """,
-        (season_id,),
-    ).fetchall()
+        # Build bounds from selected set
+        selected_dicts = [_row_to_dict(r) for r in selected_rows]
 
-    # Build bounds from selected set
-    selected_dicts = [_row_to_dict(r) for r in selected_rows]
-
-    if season_type == "playoffs" and season_year:
-        watch_map = _get_watch_kyle_by_player(conn, season_year)
-        for d in selected_dicts:
-            wk = watch_map.get(d["player_id"])
-            d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-            d["watch_best_count"]    = wk["best_count"]    if wk else None
-            d["watch_total_watched"] = wk["total_watched"] if wk else None
-            d["watch_raw_score"]     = wk["raw_score"]     if wk else None
-    else:
-        watch_map = {}
-
-    conn.close()
+        if season_type == "playoffs" and season_year:
+            watch_map = _get_watch_kyle_by_player(conn, season_year)
+            for d in selected_dicts:
+                wk = watch_map.get(d["player_id"])
+                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+                d["watch_best_count"]    = wk["best_count"]    if wk else None
+                d["watch_total_watched"] = wk["total_watched"] if wk else None
+                d["watch_raw_score"]     = wk["raw_score"]     if wk else None
+        else:
+            watch_map = {}
 
     kyle._add_derived(selected_dicts)
     exclude = {"minutes"} if season_type == "playoffs" else set()
@@ -477,68 +583,65 @@ def cumulative_kyle():
     (same as the /api/selected endpoint), so only seasons that have at least
     one selected player contribute a rating.
     """
-    conn = get_conn()
-
     # All seasons that have at least one selected player
-    seasons = conn.execute(
-        """
-        SELECT DISTINCT s.id, s.season_type, s.season_year
-        FROM seasons s
-        JOIN selected_players sp ON sp.season_id = s.id
-        """
-    ).fetchall()
-
-    # Map player_id -> {"name": ..., "regular": 0.0, "playoffs": 0.0}
-    totals: dict[int, dict] = {}
-
-    for season in seasons:
-        season_id = season["id"]
-        season_type = season["season_type"]
-
-        rows = conn.execute(
+    with db_conn() as conn:
+        seasons = conn.execute(
             """
-            SELECT
-                p.id AS player_id, p.name,
-                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
-            FROM selected_players sp
-            JOIN players p       ON p.id  = sp.player_id
-            JOIN player_stats ps ON ps.player_id = sp.player_id
-                                 AND ps.season_id = sp.season_id
-            WHERE sp.season_id = ?
-            """,
-            (season_id,),
+            SELECT DISTINCT s.id, s.season_type, s.season_year
+            FROM seasons s
+            JOIN selected_players sp ON sp.season_id = s.id
+            """
         ).fetchall()
 
-        if not rows:
-            continue
+        # Map player_id -> {"name": ..., "regular": 0.0, "playoffs": 0.0}
+        totals: dict[int, dict] = {}
 
-        player_dicts = [_row_to_dict(r) for r in rows]
+        for season in seasons:
+            season_id = season["id"]
+            season_type = season["season_type"]
 
-        if season_type == "playoffs":
-            watch_map = _get_watch_kyle_by_player(conn, season["season_year"])
-            for d in player_dicts:
-                wk = watch_map.get(d["player_id"])
-                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-                d["watch_best_count"]    = wk["best_count"]    if wk else None
-                d["watch_total_watched"] = wk["total_watched"] if wk else None
+            rows = conn.execute(
+                """
+                SELECT
+                    p.id AS player_id, p.name,
+                    ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                    ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                    ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
+                FROM selected_players sp
+                JOIN players p       ON p.id  = sp.player_id
+                JOIN player_stats ps ON ps.player_id = sp.player_id
+                                     AND ps.season_id = sp.season_id
+                WHERE sp.season_id = ?
+                """,
+                (season_id,),
+            ).fetchall()
 
-        calculated = kyle.calculate(player_dicts, season_type=season_type)
-
-        for p in calculated:
-            pid = p["player_id"]
-            rating = p.get("kyle_rating")
-            if rating is None or rating < 0:
+            if not rows:
                 continue
-            if pid not in totals:
-                totals[pid] = {"player_id": pid, "name": p["name"], "regular_kyle": 0.0, "playoffs_kyle": 0.0}
-            if season_type == "regular":
-                totals[pid]["regular_kyle"] = round(totals[pid]["regular_kyle"] + rating, 4)
-            else:
-                totals[pid]["playoffs_kyle"] = round(totals[pid]["playoffs_kyle"] + rating, 4)
 
-    conn.close()
+            player_dicts = [_row_to_dict(r) for r in rows]
+
+            if season_type == "playoffs":
+                watch_map = _get_watch_kyle_by_player(conn, season["season_year"])
+                for d in player_dicts:
+                    wk = watch_map.get(d["player_id"])
+                    d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+                    d["watch_best_count"]    = wk["best_count"]    if wk else None
+                    d["watch_total_watched"] = wk["total_watched"] if wk else None
+
+            calculated = kyle.calculate(player_dicts, season_type=season_type)
+
+            for p in calculated:
+                pid = p["player_id"]
+                rating = p.get("kyle_rating")
+                if rating is None or rating < 0:
+                    continue
+                if pid not in totals:
+                    totals[pid] = {"player_id": pid, "name": p["name"], "regular_kyle": 0.0, "playoffs_kyle": 0.0}
+                if season_type == "regular":
+                    totals[pid]["regular_kyle"] = round(totals[pid]["regular_kyle"] + rating, 4)
+                else:
+                    totals[pid]["playoffs_kyle"] = round(totals[pid]["playoffs_kyle"] + rating, 4)
 
     result = []
     for entry in totals.values():
@@ -577,173 +680,38 @@ def best3year():
     window = request.args.get("window", 3, type=int)
     window = max(1, min(window, 20))  # clamp to sane range
 
-    conn = get_conn()
-
-    # Pre-compute playoff_played (all players, not just selected) from player_stats
-    # {(player_id, year) -> game_count}
-    all_playoff_played: dict[tuple[int, int], int] = {}
-    for r in conn.execute(
-        """
-        SELECT ps.player_id, s.season_year, ps.playoff_games
-        FROM player_stats ps
-        JOIN seasons s ON s.id = ps.season_id
-        WHERE s.season_type = 'playoffs' AND ps.playoff_games IS NOT NULL
-        """
-    ).fetchall():
-        all_playoff_played[(r["player_id"], r["season_year"])] = r["playoff_games"]
-
-    # Pre-compute playoff_watched for all players from watched_game_players
-    # {(player_id, year) -> count}
-    all_playoff_watched: dict[tuple[int, int], int] = {}
-    for r in conn.execute(
-        """
-        SELECT wgp.player_id, g.game_year, COUNT(DISTINCT wgp.game_id) AS cnt
-        FROM watched_game_players wgp
-        JOIN watched_playoff_games g ON g.id = wgp.game_id
-        GROUP BY wgp.player_id, g.game_year
-        """
-    ).fetchall():
-        all_playoff_watched[(r["player_id"], r["game_year"])] = r["cnt"]
-
-    seasons = conn.execute(
-        """
-        SELECT DISTINCT s.id, s.season_year, s.season_type
-        FROM seasons s
-        JOIN selected_players sp ON sp.season_id = s.id
-        ORDER BY s.season_year
-        """
-    ).fetchall()
-
-    # player_id -> {year -> {"regular": float, "playoffs": float, "name": str}}
-    player_years: dict[int, dict] = {}
-
-    for season in seasons:
-        season_id   = season["id"]
-        season_year = season["season_year"]
-        season_type = season["season_type"]
-
-        rows = conn.execute(
+    with db_conn() as conn:
+        # Pre-compute playoff_played (all players, not just selected) from player_stats
+        # {(player_id, year) -> game_count}
+        all_playoff_played: dict[tuple[int, int], int] = {}
+        for r in conn.execute(
             """
-            SELECT
-                p.id AS player_id, p.name,
-                ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-                ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk,
-                ps.playoff_games
-            FROM selected_players sp
-            JOIN players p       ON p.id  = sp.player_id
-            JOIN player_stats ps ON ps.player_id = sp.player_id
-                                 AND ps.season_id = sp.season_id
-            WHERE sp.season_id = ?
-            """,
-            (season_id,),
-        ).fetchall()
+            SELECT ps.player_id, s.season_year, ps.playoff_games
+            FROM player_stats ps
+            JOIN seasons s ON s.id = ps.season_id
+            WHERE s.season_type = 'playoffs' AND ps.playoff_games IS NOT NULL
+            """
+        ).fetchall():
+            all_playoff_played[(r["player_id"], r["season_year"])] = r["playoff_games"]
 
-        if not rows:
-            continue
+        # Pre-compute playoff_watched for all players from watched_game_players
+        # {(player_id, year) -> count}
+        all_playoff_watched: dict[tuple[int, int], int] = {}
+        for r in conn.execute(
+            """
+            SELECT wgp.player_id, g.game_year, COUNT(DISTINCT wgp.game_id) AS cnt
+            FROM watched_game_players wgp
+            JOIN watched_playoff_games g ON g.id = wgp.game_id
+            GROUP BY wgp.player_id, g.game_year
+            """
+        ).fetchall():
+            all_playoff_watched[(r["player_id"], r["game_year"])] = r["cnt"]
 
-        player_dicts = [_row_to_dict(r) for r in rows]
-        # build a quick lookup of playoff_games per player for this season
-        playoff_games_map = {r["player_id"]: (r["playoff_games"] or 0) for r in rows}
+        # ── Delegate peak-window computation to shared helper ───────────────
+        peaks, player_years = _compute_peak_windows(conn, window)
 
-        watch_map = {}
-        if season_type == "playoffs":
-            watch_map = _get_watch_kyle_by_player(conn, season_year)
-            for d in player_dicts:
-                wk = watch_map.get(d["player_id"])
-                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-                d["watch_best_count"]    = wk["best_count"]    if wk else None
-                d["watch_total_watched"] = wk["total_watched"] if wk else None
-
-        calculated   = kyle.calculate(player_dicts, season_type=season_type)
-
-        for p in calculated:
-            pid    = p["player_id"]
-            rating = p.get("kyle_rating")
-            if rating is None:
-                continue
-            if pid not in player_years:
-                player_years[pid] = {"name": p["name"], "years": {}}
-            yr_data = player_years[pid]["years"].setdefault(
-                season_year, {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None,
-                              "playoff_watched": 0, "playoff_played": 0}
-            )
-            if season_type == "regular":
-                yr_data["regular"] += rating
-            else:
-                yr_data["playoffs"] += rating
-                wk = watch_map.get(pid)
-                if wk and wk.get("watch_kyle") is not None:
-                    yr_data["watch_kyle"] = wk["watch_kyle"]
-                yr_data["playoff_watched"] = wk["total_watched"] if wk else 0
-                yr_data["playoff_played"]  = playoff_games_map.get(pid, 0)
-
-    conn.close()
-
-    result = []
-    for pid, pdata in player_years.items():
-        name  = pdata["name"]
-        years = pdata["years"]  # {year: {regular, playoffs}}
-        sorted_years = sorted(years.keys())
-
-        if len(sorted_years) < window:
-            continue  # not enough distinct years with actual scores
-
-        first_year = sorted_years[0]
-        last_year  = sorted_years[-1]
-        all_years  = list(range(first_year, last_year + 1))  # dense range
-
-        if len(all_years) < window:
-            continue
-
-        best_window_entry = None
-
-        ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None,
-                     "playoff_watched": 0, "playoff_played": 0}
-
-        for i in range(len(all_years) - window + 1):
-            window_years = all_years[i : i + window]
-            # No consecutive-check needed — all_years is already dense
-
-            reg   = sum(years.get(y, ZERO_YEAR)["regular"]  for y in window_years)
-            play  = sum(years.get(y, ZERO_YEAR)["playoffs"] for y in window_years)
-            total = reg + play
-
-            wk_vals = [years[y]["watch_kyle"] for y in window_years
-                       if y in years and years[y].get("watch_kyle") is not None]
-            wk_total = round(sum(wk_vals), 4) if wk_vals else None
-
-            pw_watched = sum(all_playoff_watched.get((pid, y), 0) for y in window_years)
-            pw_played  = sum(all_playoff_played.get((pid, y), 0)  for y in window_years)
-
-            if best_window_entry is None or total > best_window_entry["best_window_total"]:
-                best_window_entry = {
-                    "player_id":        pid,
-                    "name":             name,
-                    "best_start_year":  window_years[0],
-                    "best_end_year":    window_years[-1],
-                    "regular_total":    round(reg,   4),
-                    "playoffs_total":   round(play,  4),
-                    "best_window_total": round(total, 4),
-                    "watch_kyle_total": wk_total,
-                    "playoff_watched":  pw_watched,
-                    "playoff_played":   pw_played,
-                    "window":           window,
-                }
-
-        if best_window_entry:
-            result.append(best_window_entry)
-
-    # ── Compute Least Squares scores ─────────────────────────────────────────
-    # Build peak-window lookup: {player_id: (start_year, end_year)}
-    peak_windows = {
-        entry["player_id"]: (entry["best_start_year"], entry["best_end_year"])
-        for entry in result
-    }
-
-    conn2 = get_conn()
-    try:
-        game_rows = conn2.execute(
+        # ── Fetch game rows for Least Squares (reuse same connection) ────────
+        game_rows = conn.execute(
             """
             SELECT
                 g.id          AS game_id,
@@ -755,8 +723,35 @@ def best3year():
             ORDER BY g.id
             """
         ).fetchall()
-    finally:
-        conn2.close()
+
+    # Augment each peak entry with best3year-specific supplementary fields
+    # (regular/playoff breakdown, watch_kyle total, and playoff game counts).
+    ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None}
+    result = []
+    for entry in peaks:
+        pid          = entry["player_id"]
+        years        = player_years.get(pid, {}).get("years", {})
+        window_years = list(range(entry["best_start_year"], entry["best_end_year"] + 1))
+
+        reg  = sum(years.get(y, ZERO_YEAR)["regular"]  for y in window_years)
+        play = sum(years.get(y, ZERO_YEAR)["playoffs"] for y in window_years)
+        wk_vals = [years[y]["watch_kyle"] for y in window_years
+                   if y in years and years[y].get("watch_kyle") is not None]
+
+        entry["regular_total"]    = round(reg,  4)
+        entry["playoffs_total"]   = round(play, 4)
+        entry["watch_kyle_total"] = round(sum(wk_vals), 4) if wk_vals else None
+        entry["playoff_watched"]  = sum(all_playoff_watched.get((pid, y), 0) for y in window_years)
+        entry["playoff_played"]   = sum(all_playoff_played.get((pid, y), 0)  for y in window_years)
+        entry["window"]           = window
+        result.append(entry)
+
+    # ── Compute Least Squares scores ─────────────────────────────────────────
+    # Build peak-window lookup: {player_id: (start_year, end_year)}
+    peak_windows = {
+        entry["player_id"]: (entry["best_start_year"], entry["best_end_year"])
+        for entry in result
+    }
 
     # Group by game_id
     from collections import defaultdict
@@ -848,301 +843,199 @@ def suggest_game():
     skip   = request.args.get("skip", 0, type=int)
     skip   = max(0, skip)
 
-    conn = get_conn()
     try:
-        # ── Build the cache key ──────────────────────────────────────────────
-        selected_ids = tuple(sorted(
-            r[0] for r in conn.execute(
-                "SELECT DISTINCT player_id FROM selected_players"
+        with db_conn() as conn:
+            # ── Build the cache key ──────────────────────────────────────────
+            selected_ids = tuple(sorted(
+                r[0] for r in conn.execute(
+                    "SELECT DISTINCT player_id FROM selected_players"
+                ).fetchall()
+            ))
+            watch_log_count = conn.execute(
+                "SELECT COUNT(*) FROM watched_playoff_games"
+            ).fetchone()[0]
+            cache_key = (window, selected_ids, watch_log_count)
+
+            if cache_key in _suggest_cache:
+                candidates = _suggest_cache[cache_key]
+                if skip < len(candidates):
+                    return jsonify(candidates[skip])
+                return jsonify({"result": "none", "message": "No unwatched games found for any overlapping pair."})
+
+            # ── Cache miss — build the full candidate list ───────────────────
+
+            # Step 1: Compute each player's peak window via shared helper
+            peaks, _ = _compute_peak_windows(conn, window)
+
+            if len(peaks) < 2:
+                _suggest_cache[cache_key] = []
+                return jsonify({"result": "none", "message": "No overlapping peak windows."})
+
+            # Pull nba_id and bbref_url for each player in peaks
+            player_ids = [p["player_id"] for p in peaks]
+            player_meta_rows = conn.execute(
+                f"SELECT id, nba_id, bbref_url FROM players WHERE id IN ({','.join('?' for _ in player_ids)})",
+                player_ids,
             ).fetchall()
-        ))
-        watch_log_count = conn.execute(
-            "SELECT COUNT(*) FROM watched_playoff_games"
-        ).fetchone()[0]
-        cache_key = (window, selected_ids, watch_log_count)
+            player_meta = {r["id"]: {"nba_id": r["nba_id"], "bbref_url": r["bbref_url"]} for r in player_meta_rows}
 
-        if cache_key in _suggest_cache:
-            candidates = _suggest_cache[cache_key]
-            conn.close()
-            if skip < len(candidates):
-                return jsonify(candidates[skip])
-            return jsonify({"result": "none", "message": "No unwatched games found for any overlapping pair."})
+            # Step 2: Build overlapping pairs sorted by min(score) desc
+            pairs = []
+            for a, b in itertools.combinations(peaks, 2):
+                if a["best_start_year"] <= b["best_end_year"] and b["best_start_year"] <= a["best_end_year"]:
+                    pair_score    = min(a["best_window_total"], b["best_window_total"])
+                    overlap_start = max(a["best_start_year"], b["best_start_year"])
+                    overlap_end   = min(a["best_end_year"],   b["best_end_year"])
+                    pairs.append((pair_score, a, b, overlap_start, overlap_end))
 
-        # ── Cache miss — build the full candidate list ───────────────────────
+            if not pairs:
+                _suggest_cache[cache_key] = []
+                return jsonify({"result": "none", "message": "No players with overlapping peak windows."})
 
-        # Step 1: Replicate best3year logic to get each player's peak window
-        seasons = conn.execute(
-            """
-            SELECT DISTINCT s.id, s.season_year, s.season_type
-            FROM seasons s
-            JOIN selected_players sp ON sp.season_id = s.id
-            ORDER BY s.season_year
-            """
-        ).fetchall()
+            pairs.sort(key=lambda x: x[0], reverse=True)
 
-        player_years: dict[int, dict] = {}
+            # Step 3: Iterate ALL pairs, fetch appearances, collect ALL unwatched
+            # candidates into a list.  We no longer return early — the goal is to
+            # build the complete ordered list once so every subsequent "Next" click
+            # is served from cache without any recomputation.
+            candidates = []
 
-        for season in seasons:
-            season_id   = season["id"]
-            season_year = season["season_year"]
-            season_type = season["season_type"]
+            for pair_score, pa, pb, overlap_start, overlap_end in pairs:
+                p1_id   = pa["player_id"]
+                p2_id   = pb["player_id"]
+                p1_meta = player_meta.get(p1_id, {})
+                p2_meta = player_meta.get(p2_id, {})
 
-            rows = conn.execute(
-                """
-                SELECT
-                    p.id AS player_id, p.name,
-                    ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-                    ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                    ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk,
-                    ps.playoff_games
-                FROM selected_players sp
-                JOIN players p       ON p.id  = sp.player_id
-                JOIN player_stats ps ON ps.player_id = sp.player_id
-                                     AND ps.season_id = sp.season_id
-                WHERE sp.season_id = ?
-                """,
-                (season_id,),
-            ).fetchall()
+                # Fetch / ensure appearances are cached for every year in the overlap
+                for year in range(overlap_start, overlap_end + 1):
+                    for pid, meta in [(p1_id, p1_meta), (p2_id, p2_meta)]:
+                        nba_id      = meta.get("nba_id")
+                        bbref_url   = meta.get("bbref_url")
+                        player_name = pa["name"] if pid == p1_id else pb["name"]
 
-            if not rows:
-                continue
+                        already_cached = conn.execute(
+                            "SELECT 1 FROM player_game_appearances "
+                            "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
+                            (pid, year),
+                        ).fetchone()
 
-            player_dicts = [_row_to_dict(r) for r in rows]
+                        if already_cached:
+                            # Only backfill opp_abbr the very first time (when the
+                            # appearance rows were just written).  On a cache hit we
+                            # skip it to avoid the extra DB/network round-trip.
+                            continue
 
-            if season_type == "playoffs":
-                watch_map = _get_watch_kyle_by_player(conn, season_year)
-                for d in player_dicts:
-                    wk = watch_map.get(d["player_id"])
-                    d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-                    d["watch_best_count"]    = wk["best_count"]    if wk else None
-                    d["watch_total_watched"] = wk["total_watched"] if wk else None
+                        # Try to auto-discover nba_id when missing
+                        if not nba_id:
+                            discovered_id = _get_nba_id_for_player(player_name, conn)
+                            if discovered_id:
+                                nba_id = discovered_id
+                                meta["nba_id"] = discovered_id
 
-            calculated = kyle.calculate(player_dicts, season_type=season_type)
+                        # stats.nba.com LeagueGameLog returns empty for pre-2000
+                        use_nba_api = nba_id and year >= 2000
 
-            for p in calculated:
-                pid    = p["player_id"]
-                rating = p.get("kyle_rating")
-                if rating is None:
-                    continue
-                if pid not in player_years:
-                    player_years[pid] = {"name": p["name"], "years": {}}
-                yr_data = player_years[pid]["years"].setdefault(
-                    season_year, {"regular": 0.0, "playoffs": 0.0}
-                )
-                if season_type == "regular":
-                    yr_data["regular"] += rating
-                else:
-                    yr_data["playoffs"] += rating
+                        if use_nba_api:
+                            _get_player_appearances(
+                                player_name, pid, nba_id, year, "playoffs", [], conn
+                            )
+                            _backfill_opp_abbr(pid, nba_id, bbref_url, player_name, year, conn)
+                        elif bbref_url:
+                            _fetch_bbref_playoff_gamelog(pid, bbref_url, year, conn)
+                        else:
+                            logger.warning(
+                                "No nba_id or bbref_url for player '%s' year=%s — skipping",
+                                player_name, year,
+                            )
 
-        # Build peak-window entries (same as best3year)
-        peaks = []
-        for pid, pdata in player_years.items():
-            name  = pdata["name"]
-            years = pdata["years"]
-            sorted_years = sorted(years.keys())
+                # Find co-appearance games (players must have faced each other)
+                co_games = conn.execute(
+                    """
+                    SELECT a1.game_date, a1.season_year,
+                           a1.team_abbr AS team1_abbr, a2.team_abbr AS team2_abbr,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY a1.season_year, a1.team_abbr, a1.opp_abbr
+                               ORDER BY a1.game_date
+                           ) AS game_of_round
+                    FROM player_game_appearances a1
+                    JOIN player_game_appearances a2
+                      ON a1.game_date = a2.game_date
+                     AND a1.season_year = a2.season_year
+                     AND a1.opp_abbr = a2.team_abbr
+                    WHERE a1.player_id = ?
+                      AND a2.player_id = ?
+                      AND a1.season_type = 'playoffs'
+                      AND a2.season_type = 'playoffs'
+                      AND a1.season_year BETWEEN ? AND ?
+                    ORDER BY a1.season_year ASC, a1.game_date ASC
+                    """,
+                    (p1_id, p2_id, overlap_start, overlap_end),
+                ).fetchall()
 
-            if len(sorted_years) < window:
-                continue
+                for game in co_games:
+                    game_date     = game["game_date"]
+                    season_year   = game["season_year"]
+                    game_of_round = game["game_of_round"]
+                    team1_variants = abbr_to_team_name_variants(game["team1_abbr"], season_year)
+                    team2_variants = abbr_to_team_name_variants(game["team2_abbr"], season_year)
+                    team1_name = team1_variants[0] if team1_variants else game["team1_abbr"]
+                    team2_name = team2_variants[0] if team2_variants else game["team2_abbr"]
 
-            first_year = sorted_years[0]
-            last_year  = sorted_years[-1]
-            all_years  = list(range(first_year, last_year + 1))
-
-            if len(all_years) < window:
-                continue
-
-            ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0}
-            best_entry = None
-            for i in range(len(all_years) - window + 1):
-                window_years = all_years[i : i + window]
-                total = sum(
-                    years.get(y, ZERO_YEAR)["regular"] + years.get(y, ZERO_YEAR)["playoffs"]
-                    for y in window_years
-                )
-                if best_entry is None or total > best_entry["best_window_total"]:
-                    best_entry = {
-                        "player_id":         pid,
-                        "name":              name,
-                        "best_start_year":   window_years[0],
-                        "best_end_year":     window_years[-1],
-                        "best_window_total": round(total, 4),
-                    }
-            if best_entry:
-                peaks.append(best_entry)
-
-        if len(peaks) < 2:
-            _suggest_cache[cache_key] = []
-            conn.close()
-            return jsonify({"result": "none", "message": "No overlapping peak windows."})
-
-        # Pull nba_id and bbref_url for each player in peaks
-        player_ids = [p["player_id"] for p in peaks]
-        player_meta_rows = conn.execute(
-            f"SELECT id, nba_id, bbref_url FROM players WHERE id IN ({','.join('?' for _ in player_ids)})",
-            player_ids,
-        ).fetchall()
-        player_meta = {r["id"]: {"nba_id": r["nba_id"], "bbref_url": r["bbref_url"]} for r in player_meta_rows}
-
-        # Step 2: Build overlapping pairs sorted by min(score) desc
-        pairs = []
-        for a, b in itertools.combinations(peaks, 2):
-            if a["best_start_year"] <= b["best_end_year"] and b["best_start_year"] <= a["best_end_year"]:
-                pair_score    = min(a["best_window_total"], b["best_window_total"])
-                overlap_start = max(a["best_start_year"], b["best_start_year"])
-                overlap_end   = min(a["best_end_year"],   b["best_end_year"])
-                pairs.append((pair_score, a, b, overlap_start, overlap_end))
-
-        if not pairs:
-            _suggest_cache[cache_key] = []
-            conn.close()
-            return jsonify({"result": "none", "message": "No players with overlapping peak windows."})
-
-        pairs.sort(key=lambda x: x[0], reverse=True)
-
-        # Step 3: Iterate ALL pairs, fetch appearances, collect ALL unwatched
-        # candidates into a list.  We no longer return early — the goal is to
-        # build the complete ordered list once so every subsequent "Next" click
-        # is served from cache without any recomputation.
-        candidates = []
-
-        for pair_score, pa, pb, overlap_start, overlap_end in pairs:
-            p1_id   = pa["player_id"]
-            p2_id   = pb["player_id"]
-            p1_meta = player_meta.get(p1_id, {})
-            p2_meta = player_meta.get(p2_id, {})
-
-            # Fetch / ensure appearances are cached for every year in the overlap
-            for year in range(overlap_start, overlap_end + 1):
-                for pid, meta in [(p1_id, p1_meta), (p2_id, p2_meta)]:
-                    nba_id      = meta.get("nba_id")
-                    bbref_url   = meta.get("bbref_url")
-                    player_name = pa["name"] if pid == p1_id else pb["name"]
-
-                    already_cached = conn.execute(
-                        "SELECT 1 FROM player_game_appearances "
-                        "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
-                        (pid, year),
+                    t1_ph = ",".join("?" * len(team1_variants))
+                    t2_ph = ",".join("?" * len(team2_variants))
+                    watched = conn.execute(
+                        f"""
+                        SELECT 1 FROM watched_playoff_games
+                        WHERE game_year = ?
+                          AND game_of_round = ?
+                          AND (
+                            (home_team IN ({t1_ph}) AND away_team IN ({t2_ph}))
+                            OR (home_team IN ({t2_ph}) AND away_team IN ({t1_ph}))
+                          )
+                        LIMIT 1
+                        """,
+                        [season_year, game_of_round,
+                         *team1_variants, *team2_variants,
+                         *team2_variants, *team1_variants],
                     ).fetchone()
 
-                    if already_cached:
-                        # Only backfill opp_abbr the very first time (when the
-                        # appearance rows were just written).  On a cache hit we
-                        # skip it to avoid the extra DB/network round-trip.
+                    if watched:
                         continue
 
-                    # Try to auto-discover nba_id when missing
-                    if not nba_id:
-                        discovered_id = _get_nba_id_for_player(player_name, conn)
-                        if discovered_id:
-                            nba_id = discovered_id
-                            meta["nba_id"] = discovered_id
+                    candidates.append({
+                        "result": "found",
+                        "player1": {
+                            "name":  pa["name"],
+                            "id":    p1_id,
+                            "peak":  f"{pa['best_start_year']}–{pa['best_end_year']}",
+                            "score": pa["best_window_total"],
+                        },
+                        "player2": {
+                            "name":  pb["name"],
+                            "id":    p2_id,
+                            "peak":  f"{pb['best_start_year']}–{pb['best_end_year']}",
+                            "score": pb["best_window_total"],
+                        },
+                        "pair_score": round(pair_score, 4),
+                        "game": {
+                            "year":        season_year,
+                            "game_date":   game_date,
+                            "team1":       team1_name,
+                            "team2":       team2_name,
+                            "round":       None,
+                            "round_known": False,
+                        },
+                    })
 
-                    # stats.nba.com LeagueGameLog returns empty for pre-2000
-                    use_nba_api = nba_id and year >= 2000
+            # Store the full list in the cache
+            _suggest_cache[cache_key] = candidates
 
-                    if use_nba_api:
-                        _get_player_appearances(
-                            player_name, pid, nba_id, year, "playoffs", [], conn
-                        )
-                        _backfill_opp_abbr(pid, nba_id, bbref_url, player_name, year, conn)
-                    elif bbref_url:
-                        _fetch_bbref_playoff_gamelog(pid, bbref_url, year, conn)
-                    else:
-                        logger.warning(
-                            "No nba_id or bbref_url for player '%s' year=%s — skipping",
-                            player_name, year,
-                        )
-
-            # Find co-appearance games (players must have faced each other)
-            co_games = conn.execute(
-                """
-                SELECT a1.game_date, a1.season_year,
-                       a1.team_abbr AS team1_abbr, a2.team_abbr AS team2_abbr,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY a1.season_year, a1.team_abbr, a1.opp_abbr
-                           ORDER BY a1.game_date
-                       ) AS game_of_round
-                FROM player_game_appearances a1
-                JOIN player_game_appearances a2
-                  ON a1.game_date = a2.game_date
-                 AND a1.season_year = a2.season_year
-                 AND a1.opp_abbr = a2.team_abbr
-                WHERE a1.player_id = ?
-                  AND a2.player_id = ?
-                  AND a1.season_type = 'playoffs'
-                  AND a2.season_type = 'playoffs'
-                  AND a1.season_year BETWEEN ? AND ?
-                ORDER BY a1.season_year ASC, a1.game_date ASC
-                """,
-                (p1_id, p2_id, overlap_start, overlap_end),
-            ).fetchall()
-
-            for game in co_games:
-                game_date     = game["game_date"]
-                season_year   = game["season_year"]
-                game_of_round = game["game_of_round"]
-                team1_variants = abbr_to_team_name_variants(game["team1_abbr"], season_year)
-                team2_variants = abbr_to_team_name_variants(game["team2_abbr"], season_year)
-                team1_name = team1_variants[0] if team1_variants else game["team1_abbr"]
-                team2_name = team2_variants[0] if team2_variants else game["team2_abbr"]
-
-                t1_ph = ",".join("?" * len(team1_variants))
-                t2_ph = ",".join("?" * len(team2_variants))
-                watched = conn.execute(
-                    f"""
-                    SELECT 1 FROM watched_playoff_games
-                    WHERE game_year = ?
-                      AND game_of_round = ?
-                      AND (
-                        (home_team IN ({t1_ph}) AND away_team IN ({t2_ph}))
-                        OR (home_team IN ({t2_ph}) AND away_team IN ({t1_ph}))
-                      )
-                    LIMIT 1
-                    """,
-                    [season_year, game_of_round,
-                     *team1_variants, *team2_variants,
-                     *team2_variants, *team1_variants],
-                ).fetchone()
-
-                if watched:
-                    continue
-
-                candidates.append({
-                    "result": "found",
-                    "player1": {
-                        "name":  pa["name"],
-                        "id":    p1_id,
-                        "peak":  f"{pa['best_start_year']}–{pa['best_end_year']}",
-                        "score": pa["best_window_total"],
-                    },
-                    "player2": {
-                        "name":  pb["name"],
-                        "id":    p2_id,
-                        "peak":  f"{pb['best_start_year']}–{pb['best_end_year']}",
-                        "score": pb["best_window_total"],
-                    },
-                    "pair_score": round(pair_score, 4),
-                    "game": {
-                        "year":        season_year,
-                        "game_date":   game_date,
-                        "team1":       team1_name,
-                        "team2":       team2_name,
-                        "round":       None,
-                        "round_known": False,
-                    },
-                })
-
-        # Store the full list in the cache
-        _suggest_cache[cache_key] = candidates
-
-        conn.close()
         if skip < len(candidates):
             return jsonify(candidates[skip])
         return jsonify({"result": "none", "message": "No unwatched games found for any overlapping pair."})
 
     except Exception as exc:
         logger.exception("suggest_game error")
-        conn.close()
         return jsonify({"result": "error", "message": str(exc)}), 500
 
 
@@ -1166,340 +1059,238 @@ def suggest_game_for_player():
     skip   = request.args.get("skip", 0, type=int)
     skip   = max(0, skip)
 
-    conn = get_conn()
     try:
-        # ── Validate focal player ────────────────────────────────────────────
-        player_row = conn.execute(
-            "SELECT id, name, nba_id, bbref_url FROM players WHERE id = ?", (player_id,)
-        ).fetchone()
-        if not player_row:
-            conn.close()
-            return jsonify({"result": "error", "message": "Player not found."})
+        with db_conn() as conn:
+            # ── Validate focal player ────────────────────────────────────────
+            player_row = conn.execute(
+                "SELECT id, name, nba_id, bbref_url FROM players WHERE id = ?", (player_id,)
+            ).fetchone()
+            if not player_row:
+                return jsonify({"result": "error", "message": "Player not found."})
 
-        # ── Build the cache key ──────────────────────────────────────────────
-        selected_ids = tuple(sorted(
-            r[0] for r in conn.execute(
-                "SELECT DISTINCT player_id FROM selected_players"
-            ).fetchall()
-        ))
-        watch_log_count = conn.execute(
-            "SELECT COUNT(*) FROM watched_playoff_games"
-        ).fetchone()[0]
-        cache_key = ("player", player_id, window, selected_ids, watch_log_count)
+            # ── Build the cache key ──────────────────────────────────────────
+            selected_ids = tuple(sorted(
+                r[0] for r in conn.execute(
+                    "SELECT DISTINCT player_id FROM selected_players"
+                ).fetchall()
+            ))
+            watch_log_count = conn.execute(
+                "SELECT COUNT(*) FROM watched_playoff_games"
+            ).fetchone()[0]
+            cache_key = ("player", player_id, window, selected_ids, watch_log_count)
 
-        if cache_key in _suggest_cache:
-            candidates = _suggest_cache[cache_key]
-            conn.close()
-            if skip < len(candidates):
-                return jsonify(candidates[skip])
-            return jsonify({"result": "none", "message": "All games featuring this player have been watched. Impressive."})
+            if cache_key in _suggest_cache:
+                candidates = _suggest_cache[cache_key]
+                if skip < len(candidates):
+                    return jsonify(candidates[skip])
+                return jsonify({"result": "none", "message": "All games featuring this player have been watched. Impressive."})
 
-        # ── Step 1a: Find focal player's playoff years ───────────────────────
-        playoff_season_rows = conn.execute(
-            """
-            SELECT DISTINCT s.season_year, s.id AS season_id
-            FROM player_stats ps
-            JOIN seasons s ON s.id = ps.season_id
-            WHERE ps.player_id = ? AND s.season_type = 'playoffs'
-            ORDER BY s.season_year
-            """,
-            (player_id,),
-        ).fetchall()
-
-        if not playoff_season_rows:
-            _suggest_cache[cache_key] = []
-            conn.close()
-            return jsonify({"result": "none", "message": "Focal player has no playoff seasons in the database."})
-
-        playoff_years = {r["season_year"] for r in playoff_season_rows}
-
-        # ── Steps 1b–1d: Compute peaks for ALL selected players (including focal)
-        # in one pass — identical to best3year logic.  The focal player's peak
-        # is extracted afterward; everyone else becomes an opponent candidate.
-        seasons = conn.execute(
-            """
-            SELECT DISTINCT s.id, s.season_year, s.season_type
-            FROM seasons s
-            JOIN selected_players sp ON sp.season_id = s.id
-            ORDER BY s.season_year
-            """
-        ).fetchall()
-
-        all_player_years: dict[int, dict] = {}
-
-        for season in seasons:
-            season_id   = season["id"]
-            season_year = season["season_year"]
-            season_type = season["season_type"]
-
-            rows = conn.execute(
+            # ── Step 1a: Find focal player's playoff years ───────────────────
+            playoff_season_rows = conn.execute(
                 """
-                SELECT
-                    p.id AS player_id, p.name,
-                    ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-                    ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                    ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk,
-                    ps.playoff_games
-                FROM selected_players sp
-                JOIN players p       ON p.id  = sp.player_id
-                JOIN player_stats ps ON ps.player_id = sp.player_id
-                                     AND ps.season_id = sp.season_id
-                WHERE sp.season_id = ?
+                SELECT DISTINCT s.season_year, s.id AS season_id
+                FROM player_stats ps
+                JOIN seasons s ON s.id = ps.season_id
+                WHERE ps.player_id = ? AND s.season_type = 'playoffs'
+                ORDER BY s.season_year
                 """,
-                (season_id,),
+                (player_id,),
             ).fetchall()
 
-            if not rows:
-                continue
+            if not playoff_season_rows:
+                _suggest_cache[cache_key] = []
+                return jsonify({"result": "none", "message": "Focal player has no playoff seasons in the database."})
 
-            player_dicts = [_row_to_dict(r) for r in rows]
+            playoff_years = {r["season_year"] for r in playoff_season_rows}
 
-            if season_type == "playoffs":
-                watch_map = _get_watch_kyle_by_player(conn, season_year)
-                for d in player_dicts:
-                    wk = watch_map.get(d["player_id"])
-                    d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-                    d["watch_best_count"]    = wk["best_count"]    if wk else None
-                    d["watch_total_watched"] = wk["total_watched"] if wk else None
+            # ── Steps 1b–1d: Compute peaks for ALL selected players via shared helper
+            all_peaks, _ = _compute_peak_windows(conn, window)
 
-            calculated = kyle.calculate(player_dicts, season_type=season_type)
+            # Extract focal player's peak
+            focal_peak_entry = next((p for p in all_peaks if p["player_id"] == player_id), None)
+            if focal_peak_entry is None:
+                _suggest_cache[cache_key] = []
+                return jsonify({"result": "none", "message": "Focal player has fewer consecutive seasons than the selected window."})
 
-            for p in calculated:
-                pid    = p["player_id"]
-                rating = p.get("kyle_rating")
-                if rating is None:
+            best_focal = {
+                "player_id":       player_id,
+                "name":            player_row["name"],
+                "best_start_year": focal_peak_entry["best_start_year"],
+                "best_end_year":   focal_peak_entry["best_end_year"],
+                "score":           focal_peak_entry["best_window_total"],
+            }
+            opp_peaks = [p for p in all_peaks if p["player_id"] != player_id]
+
+            # Filter to overlapping opponents, sort by score desc
+            focal_start = best_focal["best_start_year"]
+            focal_end   = best_focal["best_end_year"]
+            overlapping_opps = [
+                opp for opp in opp_peaks
+                if opp["best_start_year"] <= focal_end and focal_start <= opp["best_end_year"]
+            ]
+            overlapping_opps.sort(key=lambda x: x["best_window_total"], reverse=True)
+
+            if not overlapping_opps:
+                _suggest_cache[cache_key] = []
+                return jsonify({"result": "none", "message": "No selected players with overlapping peak windows."})
+
+            # ── Step 1e: Fetch appearances and find unwatched co-appearance games ─
+            # Pull meta for all players involved
+            all_pids = [opp["player_id"] for opp in overlapping_opps] + [player_id]
+            meta_rows = conn.execute(
+                f"SELECT id, nba_id, bbref_url, name FROM players WHERE id IN ({','.join('?' * len(all_pids))})",
+                all_pids,
+            ).fetchall()
+            player_meta = {r["id"]: {"nba_id": r["nba_id"], "bbref_url": r["bbref_url"], "name": r["name"]} for r in meta_rows}
+
+            candidates = []
+            first_missing_opp = None
+
+            for opp in overlapping_opps:
+                opp_id    = opp["player_id"]
+                opp_start = opp["best_start_year"]
+                opp_end   = opp["best_end_year"]
+
+                overlap_start = max(focal_start, opp_start)
+                overlap_end   = min(focal_end,   opp_end)
+                # Further restrict to years where focal player has actual playoff stats
+                overlap_years = [y for y in range(overlap_start, overlap_end + 1) if y in playoff_years]
+                if not overlap_years:
                     continue
-                if pid not in all_player_years:
-                    all_player_years[pid] = {"name": p["name"], "years": {}}
-                yr_data = all_player_years[pid]["years"].setdefault(
-                    season_year, {"regular": 0.0, "playoffs": 0.0}
-                )
-                if season_type == "regular":
-                    yr_data["regular"] += rating
-                else:
-                    yr_data["playoffs"] += rating
 
-        # Build peak entries for all players; split focal vs opponents after
-        all_peaks = []
-        ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0}
-        for pid, pdata in all_player_years.items():
-            name  = pdata["name"]
-            years = pdata["years"]
-            sorted_years = sorted(years.keys())
-            if len(sorted_years) < window:
-                continue
-            first_year = sorted_years[0]
-            last_year  = sorted_years[-1]
-            all_years  = list(range(first_year, last_year + 1))
-            if len(all_years) < window:
-                continue
-            best_entry = None
-            for i in range(len(all_years) - window + 1):
-                window_years = all_years[i: i + window]
-                total = sum(
-                    years.get(y, ZERO_YEAR)["regular"] + years.get(y, ZERO_YEAR)["playoffs"]
-                    for y in window_years
-                )
-                if best_entry is None or total > best_entry["best_window_total"]:
-                    best_entry = {
-                        "player_id":         pid,
-                        "name":              name,
-                        "best_start_year":   window_years[0],
-                        "best_end_year":     window_years[-1],
-                        "best_window_total": round(total, 4),
-                    }
-            if best_entry:
-                all_peaks.append(best_entry)
+                # Ensure appearances are cached for both players
+                any_data_missing = False
+                for pid, role_name in [(player_id, player_row["name"]), (opp_id, opp["name"])]:
+                    meta = player_meta.get(pid, {})
+                    nba_id    = meta.get("nba_id")
+                    bbref_url = meta.get("bbref_url")
+                    pname     = meta.get("name", role_name)
 
-        # Extract focal player's peak
-        focal_peak_entry = next((p for p in all_peaks if p["player_id"] == player_id), None)
-        if focal_peak_entry is None:
-            _suggest_cache[cache_key] = []
-            conn.close()
-            return jsonify({"result": "none", "message": "Focal player has fewer consecutive seasons than the selected window."})
+                    for year in overlap_years:
+                        already_cached = conn.execute(
+                            "SELECT 1 FROM player_game_appearances "
+                            "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
+                            (pid, year),
+                        ).fetchone()
+                        if already_cached:
+                            continue
 
-        best_focal = {
-            "player_id":       player_id,
-            "name":            player_row["name"],
-            "best_start_year": focal_peak_entry["best_start_year"],
-            "best_end_year":   focal_peak_entry["best_end_year"],
-            "score":           focal_peak_entry["best_window_total"],
-        }
-        opp_peaks = [p for p in all_peaks if p["player_id"] != player_id]
+                        if not nba_id:
+                            discovered = _get_nba_id_for_player(pname, conn)
+                            if discovered:
+                                nba_id = discovered
+                                meta["nba_id"] = discovered
 
-        # Filter to overlapping opponents, sort by score desc
-        focal_start = best_focal["best_start_year"]
-        focal_end   = best_focal["best_end_year"]
-        overlapping_opps = [
-            opp for opp in opp_peaks
-            if opp["best_start_year"] <= focal_end and focal_start <= opp["best_end_year"]
-        ]
-        overlapping_opps.sort(key=lambda x: x["best_window_total"], reverse=True)
+                        use_nba_api = nba_id and year >= 2000
+                        if use_nba_api:
+                            _get_player_appearances(pname, pid, nba_id, year, "playoffs", [], conn)
+                            _backfill_opp_abbr(pid, nba_id, bbref_url, pname, year, conn)
+                        elif bbref_url:
+                            _fetch_bbref_playoff_gamelog(pid, bbref_url, year, conn)
+                        else:
+                            logger.warning(
+                                "No nba_id or bbref_url for player '%s' year=%s — skipping", pname, year
+                            )
+                            any_data_missing = True
 
-        if not overlapping_opps:
-            _suggest_cache[cache_key] = []
-            conn.close()
-            return jsonify({"result": "none", "message": "No selected players with overlapping peak windows."})
+                        # Check again after fetch attempt
+                        still_missing = not conn.execute(
+                            "SELECT 1 FROM player_game_appearances "
+                            "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
+                            (pid, year),
+                        ).fetchone()
+                        if still_missing:
+                            any_data_missing = True
 
-        # ── Step 1e: Fetch appearances and find unwatched co-appearance games ─
-        # Pull meta for all players involved
-        all_pids = [opp["player_id"] for opp in overlapping_opps] + [player_id]
-        meta_rows = conn.execute(
-            f"SELECT id, nba_id, bbref_url, name FROM players WHERE id IN ({','.join('?' * len(all_pids))})",
-            all_pids,
-        ).fetchall()
-        player_meta = {r["id"]: {"nba_id": r["nba_id"], "bbref_url": r["bbref_url"], "name": r["name"]} for r in meta_rows}
+                if any_data_missing and first_missing_opp is None:
+                    first_missing_opp = opp["name"]
 
-        candidates = []
-        first_missing_opp = None
+                # Co-appearance query restricted to overlap_years
+                year_placeholders = ",".join("?" * len(overlap_years))
+                co_games = conn.execute(
+                    f"""
+                    SELECT a1.game_date, a1.season_year,
+                           a1.team_abbr AS team1_abbr, a2.team_abbr AS team2_abbr,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY a1.season_year, a1.team_abbr, a1.opp_abbr
+                               ORDER BY a1.game_date
+                           ) AS game_of_round
+                    FROM player_game_appearances a1
+                    JOIN player_game_appearances a2
+                      ON a1.game_date = a2.game_date
+                     AND a1.season_year = a2.season_year
+                     AND a1.opp_abbr = a2.team_abbr
+                    WHERE a1.player_id = ?
+                      AND a2.player_id = ?
+                      AND a1.season_type = 'playoffs'
+                      AND a2.season_type = 'playoffs'
+                      AND a1.season_year IN ({year_placeholders})
+                    ORDER BY a1.season_year ASC, a1.game_date ASC
+                    """,
+                    [player_id, opp_id, *overlap_years],
+                ).fetchall()
 
-        for opp in overlapping_opps:
-            opp_id    = opp["player_id"]
-            opp_start = opp["best_start_year"]
-            opp_end   = opp["best_end_year"]
+                for game in co_games:
+                    game_date     = game["game_date"]
+                    season_year   = game["season_year"]
+                    game_of_round = game["game_of_round"]
+                    team1_variants = abbr_to_team_name_variants(game["team1_abbr"], season_year)
+                    team2_variants = abbr_to_team_name_variants(game["team2_abbr"], season_year)
+                    team1_name = team1_variants[0] if team1_variants else game["team1_abbr"]
+                    team2_name = team2_variants[0] if team2_variants else game["team2_abbr"]
 
-            overlap_start = max(focal_start, opp_start)
-            overlap_end   = min(focal_end,   opp_end)
-            # Further restrict to years where focal player has actual playoff stats
-            overlap_years = [y for y in range(overlap_start, overlap_end + 1) if y in playoff_years]
-            if not overlap_years:
-                continue
-
-            # Ensure appearances are cached for both players
-            any_data_missing = False
-            for pid, role_name in [(player_id, player_row["name"]), (opp_id, opp["name"])]:
-                meta = player_meta.get(pid, {})
-                nba_id    = meta.get("nba_id")
-                bbref_url = meta.get("bbref_url")
-                pname     = meta.get("name", role_name)
-
-                for year in overlap_years:
-                    already_cached = conn.execute(
-                        "SELECT 1 FROM player_game_appearances "
-                        "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
-                        (pid, year),
+                    t1_ph = ",".join("?" * len(team1_variants))
+                    t2_ph = ",".join("?" * len(team2_variants))
+                    watched = conn.execute(
+                        f"""
+                        SELECT 1 FROM watched_playoff_games
+                        WHERE game_year = ?
+                          AND game_of_round = ?
+                          AND (
+                            (home_team IN ({t1_ph}) AND away_team IN ({t2_ph}))
+                            OR (home_team IN ({t2_ph}) AND away_team IN ({t1_ph}))
+                          )
+                        LIMIT 1
+                        """,
+                        [season_year, game_of_round,
+                         *team1_variants, *team2_variants,
+                         *team2_variants, *team1_variants],
                     ).fetchone()
-                    if already_cached:
+
+                    if watched:
                         continue
 
-                    if not nba_id:
-                        discovered = _get_nba_id_for_player(pname, conn)
-                        if discovered:
-                            nba_id = discovered
-                            meta["nba_id"] = discovered
+                    candidates.append({
+                        "result": "found",
+                        "_opp_score": opp["best_window_total"],
+                        "focal_player": {
+                            "id":    player_id,
+                            "name":  player_row["name"],
+                            "peak":  f"{focal_start}–{focal_end}",
+                            "score": best_focal["score"],
+                        },
+                        "opponent": {
+                            "id":    opp_id,
+                            "name":  opp["name"],
+                            "peak":  f"{opp_start}–{opp_end}",
+                            "score": opp["best_window_total"],
+                        },
+                        "game": {
+                            "year":      season_year,
+                            "game_date": game_date,
+                            "team1":     team1_name,
+                            "team2":     team2_name,
+                            "round":     None,
+                        },
+                    })
 
-                    use_nba_api = nba_id and year >= 2000
-                    if use_nba_api:
-                        _get_player_appearances(pname, pid, nba_id, year, "playoffs", [], conn)
-                        _backfill_opp_abbr(pid, nba_id, bbref_url, pname, year, conn)
-                    elif bbref_url:
-                        _fetch_bbref_playoff_gamelog(pid, bbref_url, year, conn)
-                    else:
-                        logger.warning(
-                            "No nba_id or bbref_url for player '%s' year=%s — skipping", pname, year
-                        )
-                        any_data_missing = True
+            # Sort: opponent peak score desc, then game_date asc as tiebreaker
+            candidates.sort(key=lambda c: (-c["_opp_score"], c["game"]["game_date"]))
+            # Remove internal sort key before caching/returning
+            for c in candidates:
+                del c["_opp_score"]
 
-                    # Check again after fetch attempt
-                    still_missing = not conn.execute(
-                        "SELECT 1 FROM player_game_appearances "
-                        "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
-                        (pid, year),
-                    ).fetchone()
-                    if still_missing:
-                        any_data_missing = True
-
-            if any_data_missing and first_missing_opp is None:
-                first_missing_opp = opp["name"]
-
-            # Co-appearance query restricted to overlap_years
-            year_placeholders = ",".join("?" * len(overlap_years))
-            co_games = conn.execute(
-                f"""
-                SELECT a1.game_date, a1.season_year,
-                       a1.team_abbr AS team1_abbr, a2.team_abbr AS team2_abbr,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY a1.season_year, a1.team_abbr, a1.opp_abbr
-                           ORDER BY a1.game_date
-                       ) AS game_of_round
-                FROM player_game_appearances a1
-                JOIN player_game_appearances a2
-                  ON a1.game_date = a2.game_date
-                 AND a1.season_year = a2.season_year
-                 AND a1.opp_abbr = a2.team_abbr
-                WHERE a1.player_id = ?
-                  AND a2.player_id = ?
-                  AND a1.season_type = 'playoffs'
-                  AND a2.season_type = 'playoffs'
-                  AND a1.season_year IN ({year_placeholders})
-                ORDER BY a1.season_year ASC, a1.game_date ASC
-                """,
-                [player_id, opp_id, *overlap_years],
-            ).fetchall()
-
-            for game in co_games:
-                game_date     = game["game_date"]
-                season_year   = game["season_year"]
-                game_of_round = game["game_of_round"]
-                team1_variants = abbr_to_team_name_variants(game["team1_abbr"], season_year)
-                team2_variants = abbr_to_team_name_variants(game["team2_abbr"], season_year)
-                team1_name = team1_variants[0] if team1_variants else game["team1_abbr"]
-                team2_name = team2_variants[0] if team2_variants else game["team2_abbr"]
-
-                t1_ph = ",".join("?" * len(team1_variants))
-                t2_ph = ",".join("?" * len(team2_variants))
-                watched = conn.execute(
-                    f"""
-                    SELECT 1 FROM watched_playoff_games
-                    WHERE game_year = ?
-                      AND game_of_round = ?
-                      AND (
-                        (home_team IN ({t1_ph}) AND away_team IN ({t2_ph}))
-                        OR (home_team IN ({t2_ph}) AND away_team IN ({t1_ph}))
-                      )
-                    LIMIT 1
-                    """,
-                    [season_year, game_of_round,
-                     *team1_variants, *team2_variants,
-                     *team2_variants, *team1_variants],
-                ).fetchone()
-
-                if watched:
-                    continue
-
-                candidates.append({
-                    "result": "found",
-                    "_opp_score": opp["best_window_total"],
-                    "focal_player": {
-                        "id":    player_id,
-                        "name":  player_row["name"],
-                        "peak":  f"{focal_start}–{focal_end}",
-                        "score": best_focal["score"],
-                    },
-                    "opponent": {
-                        "id":    opp_id,
-                        "name":  opp["name"],
-                        "peak":  f"{opp_start}–{opp_end}",
-                        "score": opp["best_window_total"],
-                    },
-                    "game": {
-                        "year":      season_year,
-                        "game_date": game_date,
-                        "team1":     team1_name,
-                        "team2":     team2_name,
-                        "round":     None,
-                    },
-                })
-
-        # Sort: opponent peak score desc, then game_date asc as tiebreaker
-        candidates.sort(key=lambda c: (-c["_opp_score"], c["game"]["game_date"]))
-        # Remove internal sort key before caching/returning
-        for c in candidates:
-            del c["_opp_score"]
-
-        _suggest_cache[cache_key] = candidates
-
-        conn.close()
+            _suggest_cache[cache_key] = candidates
 
         if candidates:
             if skip < len(candidates):
@@ -1512,7 +1303,6 @@ def suggest_game_for_player():
 
     except Exception as exc:
         logger.exception("suggest_game_for_player error")
-        conn.close()
         return jsonify({"result": "error", "message": str(exc)}), 500
 
 
@@ -1527,14 +1317,11 @@ def clear_selected():
     if not season_id:
         return jsonify({"error": "season_id required"}), 400
 
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         # Remove any selections and stats for this season.
         conn.execute("DELETE FROM selected_players WHERE season_id = ?", (season_id,))
         conn.execute("DELETE FROM player_stats   WHERE season_id = ?", (season_id,))
         conn.commit()
-    finally:
-        conn.close()
 
     return jsonify({"ok": True})
 
@@ -1567,10 +1354,9 @@ def patch_stats(stats_id):
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values()) + [stats_id]
 
-    conn = get_conn()
-    conn.execute(f"UPDATE player_stats SET {set_clause} WHERE id = ?", values)
-    conn.commit()
-    conn.close()
+    with db_conn() as conn:
+        conn.execute(f"UPDATE player_stats SET {set_clause} WHERE id = ?", values)
+        conn.commit()
     return jsonify({"ok": True})
 
 
@@ -1599,91 +1385,87 @@ def player_history(player_id):
           ]
         }
     """
-    conn = get_conn()
+    with db_conn() as conn:
+        player = conn.execute(
+            "SELECT * FROM players WHERE id = ?", (player_id,)
+        ).fetchone()
+        if not player:
+            abort(404)
 
-    player = conn.execute(
-        "SELECT * FROM players WHERE id = ?", (player_id,)
-    ).fetchone()
-    if not player:
-        conn.close()
-        abort(404)
+        player_dict = _row_to_dict(player)
 
-    player_dict = _row_to_dict(player)
-
-    # All seasons this player has stats for
-    season_rows = conn.execute(
-        """
-        SELECT s.id AS season_id, s.season_year, s.season_type, s.label,
-               ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-               ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-               ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
-               ps.on_off_asterisk
-        FROM player_stats ps
-        JOIN seasons s ON s.id = ps.season_id
-        WHERE ps.player_id = ?
-        ORDER BY s.season_year, s.season_type
-        """,
-        (player_id,),
-    ).fetchall()
-
-    season_ids = [r["season_id"] for r in season_rows]
-
-    # Fetch all selected-player stats for every relevant season in one query
-    selected_by_season: dict[int, list[dict]] = {}
-    if season_ids:
-        placeholders = ",".join("?" * len(season_ids))
-        selected_all = conn.execute(
-            f"""
-            SELECT sp.season_id,
-                   p.id AS player_id, p.name,
+        # All seasons this player has stats for
+        season_rows = conn.execute(
+            """
+            SELECT s.id AS season_id, s.season_year, s.season_type, s.label,
                    ps.minutes, ps.usage_rate, ps.true_shooting_pct,
                    ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                   ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
-            FROM selected_players sp
-            JOIN players p       ON p.id  = sp.player_id
-            JOIN player_stats ps ON ps.player_id = sp.player_id
-                                 AND ps.season_id = sp.season_id
-            WHERE sp.season_id IN ({placeholders})
+                   ps.on_off_diff, ps.bpm, ps.defense, ps.position, ps.playoff_games,
+                   ps.on_off_asterisk
+            FROM player_stats ps
+            JOIN seasons s ON s.id = ps.season_id
+            WHERE ps.player_id = ?
+            ORDER BY s.season_year, s.season_type
             """,
-            season_ids,
+            (player_id,),
         ).fetchall()
 
-        for r in selected_all:
-            sid = r["season_id"]
-            selected_by_season.setdefault(sid, []).append(_row_to_dict(r))
+        season_ids = [r["season_id"] for r in season_rows]
 
-    # Pre-fetch watch_kyle per year for this player (for playoff seasons)
-    watch_kyle_per_year: dict[int, float] = {}
-    watch_rows = conn.execute(
-        """
-        SELECT
-            g.game_year,
-            COUNT(DISTINCT wgp.game_id) AS total_watched,
-            COUNT(DISTINCT CASE WHEN g.best_player_id = ? THEN g.id END) AS best_count
-        FROM watched_game_players wgp
-        JOIN watched_playoff_games g ON g.id = wgp.game_id
-        WHERE wgp.player_id = ?
-        GROUP BY g.game_year
-        """,
-        (player_id, player_id),
-    ).fetchall()
-    for r in watch_rows:
-        total = r["total_watched"] or 0
-        best  = r["best_count"] or 0
-        if total > 0:
-            pct = best / total
-            watch_kyle_per_year[r["game_year"]] = round(pct * 2 - 1, 3)
+        # Fetch all selected-player stats for every relevant season in one query
+        selected_by_season: dict[int, list[dict]] = {}
+        if season_ids:
+            placeholders = ",".join("?" * len(season_ids))
+            selected_all = conn.execute(
+                f"""
+                SELECT sp.season_id,
+                       p.id AS player_id, p.name,
+                       ps.minutes, ps.usage_rate, ps.true_shooting_pct,
+                       ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
+                       ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
+                FROM selected_players sp
+                JOIN players p       ON p.id  = sp.player_id
+                JOIN player_stats ps ON ps.player_id = sp.player_id
+                                     AND ps.season_id = sp.season_id
+                WHERE sp.season_id IN ({placeholders})
+                """,
+                season_ids,
+            ).fetchall()
 
-    # Pre-fetch watch_kyle maps for all playoff season years (for selected-set bounds)
-    playoff_years = list({
-        r["season_year"] for r in season_rows
-        if r["season_type"] == "playoffs"
-    })
-    watch_map_by_year: dict[int, dict] = {}
-    for yr in playoff_years:
-        watch_map_by_year[yr] = _get_watch_kyle_by_player(conn, yr)
+            for r in selected_all:
+                sid = r["season_id"]
+                selected_by_season.setdefault(sid, []).append(_row_to_dict(r))
 
-    conn.close()
+        # Pre-fetch watch_kyle per year for this player (for playoff seasons)
+        watch_kyle_per_year: dict[int, float] = {}
+        watch_rows = conn.execute(
+            """
+            SELECT
+                g.game_year,
+                COUNT(DISTINCT wgp.game_id) AS total_watched,
+                COUNT(DISTINCT CASE WHEN g.best_player_id = ? THEN g.id END) AS best_count
+            FROM watched_game_players wgp
+            JOIN watched_playoff_games g ON g.id = wgp.game_id
+            WHERE wgp.player_id = ?
+            GROUP BY g.game_year
+            """,
+            (player_id, player_id),
+        ).fetchall()
+        for r in watch_rows:
+            total = r["total_watched"] or 0
+            best  = r["best_count"] or 0
+            if total > 0:
+                pct = best / total
+                watch_kyle_per_year[r["game_year"]] = round(pct * 2 - 1, 3)
+
+        # Pre-fetch watch_kyle maps for all playoff season years (for selected-set bounds)
+        playoff_years = list({
+            r["season_year"] for r in season_rows
+            if r["season_type"] == "playoffs"
+        })
+        watch_map_by_year: dict[int, dict] = {}
+        for yr in playoff_years:
+            watch_map_by_year[yr] = _get_watch_kyle_by_player(conn, yr)
 
     # Scrape birthdate on first visit if we have a bbref_url but no date yet
     if not player_dict.get("birthdate") and player_dict.get("bbref_url"):
@@ -1691,12 +1473,11 @@ def player_history(player_id):
             from scraper import scrape_player_birthdate
             bd = scrape_player_birthdate(player_dict["bbref_url"])
             if bd:
-                upd = get_conn()
-                upd.execute(
-                    "UPDATE players SET birthdate = ? WHERE id = ?", (bd, player_id)
-                )
-                upd.commit()
-                upd.close()
+                with db_conn() as upd:
+                    upd.execute(
+                        "UPDATE players SET birthdate = ? WHERE id = ?", (bd, player_id)
+                    )
+                    upd.commit()
                 player_dict["birthdate"] = bd
         except Exception:
             pass
@@ -1810,39 +1591,37 @@ def list_watched_games():
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-    conn = get_conn()
-    rows = conn.execute(
-        f"""
-        SELECT g.*,
-               p.name AS best_player_name
-        FROM watched_playoff_games g
-        LEFT JOIN players p ON p.id = g.best_player_id
-        {where_sql}
-        ORDER BY g.game_year DESC, g.date_watched DESC
-        """,
-        params,
-    ).fetchall()
-
-    game_ids = [r["id"] for r in rows]
-    players_by_game: dict[int, list[dict]] = {}
-    if game_ids:
-        placeholders = ",".join("?" * len(game_ids))
-        link_rows = conn.execute(
+    with db_conn() as conn:
+        rows = conn.execute(
             f"""
-            SELECT wgp.game_id, p.id AS player_id, p.name
-            FROM watched_game_players wgp
-            JOIN players p ON p.id = wgp.player_id
-            WHERE wgp.game_id IN ({placeholders})
-            ORDER BY p.name
+            SELECT g.*,
+                   p.name AS best_player_name
+            FROM watched_playoff_games g
+            LEFT JOIN players p ON p.id = g.best_player_id
+            {where_sql}
+            ORDER BY g.game_year DESC, g.date_watched DESC
             """,
-            game_ids,
+            params,
         ).fetchall()
-        for lr in link_rows:
-            players_by_game.setdefault(lr["game_id"], []).append(
-                {"player_id": lr["player_id"], "name": lr["name"]}
-            )
 
-    conn.close()
+        game_ids = [r["id"] for r in rows]
+        players_by_game: dict[int, list[dict]] = {}
+        if game_ids:
+            placeholders = ",".join("?" * len(game_ids))
+            link_rows = conn.execute(
+                f"""
+                SELECT wgp.game_id, p.id AS player_id, p.name
+                FROM watched_game_players wgp
+                JOIN players p ON p.id = wgp.player_id
+                WHERE wgp.game_id IN ({placeholders})
+                ORDER BY p.name
+                """,
+                game_ids,
+            ).fetchall()
+            for lr in link_rows:
+                players_by_game.setdefault(lr["game_id"], []).append(
+                    {"player_id": lr["player_id"], "name": lr["name"]}
+                )
 
     result = []
     for r in rows:
@@ -1862,8 +1641,7 @@ def create_watched_game():
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         cur = conn.execute(
             """
             INSERT INTO watched_playoff_games
@@ -1894,30 +1672,26 @@ def create_watched_game():
             "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
             (game_id,),
         ).fetchone()
-    finally:
-        conn.close()
 
     return jsonify(_game_row_to_dict(row)), 201
 
 
 @app.route("/api/watched_games/<int:game_id>")
 def get_watched_game(game_id):
-    conn = get_conn()
-    row = conn.execute(
-        "SELECT g.*, p.name AS best_player_name FROM watched_playoff_games g "
-        "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
-        (game_id,),
-    ).fetchone()
-    if not row:
-        conn.close()
-        abort(404)
-    d = _game_row_to_dict(row)
-    link_rows = conn.execute(
-        "SELECT wgp.player_id, p.name FROM watched_game_players wgp "
-        "JOIN players p ON p.id = wgp.player_id WHERE wgp.game_id = ? ORDER BY p.name",
-        (game_id,),
-    ).fetchall()
-    conn.close()
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT g.*, p.name AS best_player_name FROM watched_playoff_games g "
+            "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
+            (game_id,),
+        ).fetchone()
+        if not row:
+            abort(404)
+        d = _game_row_to_dict(row)
+        link_rows = conn.execute(
+            "SELECT wgp.player_id, p.name FROM watched_game_players wgp "
+            "JOIN players p ON p.id = wgp.player_id WHERE wgp.game_id = ? ORDER BY p.name",
+            (game_id,),
+        ).fetchall()
     d["important_players"] = [{"player_id": r["player_id"], "name": r["name"]} for r in link_rows]
     return jsonify(d)
 
@@ -1932,8 +1706,7 @@ def update_watched_game(game_id):
     }
     updates = {k: v for k, v in data.items() if k in allowed}
 
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         if updates:
             set_clause = ", ".join(f"{k} = ?" for k in updates)
             values = list(updates.values()) + [game_id]
@@ -1955,8 +1728,6 @@ def update_watched_game(game_id):
             "LEFT JOIN players p ON p.id = g.best_player_id WHERE g.id = ?",
             (game_id,),
         ).fetchone()
-    finally:
-        conn.close()
 
     if not row:
         abort(404)
@@ -1965,14 +1736,11 @@ def update_watched_game(game_id):
 
 @app.route("/api/watched_games/<int:game_id>", methods=["DELETE"])
 def delete_watched_game(game_id):
-    conn = get_conn()
-    try:
+    with db_conn() as conn:
         deleted = conn.execute(
             "DELETE FROM watched_playoff_games WHERE id = ?", (game_id,)
         ).rowcount
         conn.commit()
-    finally:
-        conn.close()
     if not deleted:
         abort(404)
     return jsonify({"ok": True})
@@ -1980,48 +1748,46 @@ def delete_watched_game(game_id):
 
 @app.route("/api/watched_games/best_player_leaderboard")
 def best_player_leaderboard():
-    conn = get_conn()
+    with db_conn() as conn:
+        # Fetch per-player, per-year weighted counts
+        rows = conn.execute(
+            """
+            SELECT
+                wgp.player_id,
+                p.name,
+                g.game_year,
+                COUNT(DISTINCT wgp.game_id) AS total_watched,
+                SUM(CASE
+                    WHEN g.best_player_id = wgp.player_id THEN
+                        CASE g.round
+                            WHEN 'First Round'       THEN 1
+                            WHEN 'Second Round'      THEN 2
+                            WHEN 'Conference Finals' THEN 3
+                            WHEN 'NBA Finals'        THEN 4
+                            ELSE 1
+                        END
+                    ELSE 0
+                END) AS weighted_best
+            FROM watched_game_players wgp
+            JOIN players p ON p.id = wgp.player_id
+            JOIN watched_playoff_games g ON g.id = wgp.game_id
+            GROUP BY wgp.player_id, g.game_year
+            """
+        ).fetchall()
 
-    # Fetch per-player, per-year weighted counts
-    rows = conn.execute(
-        """
-        SELECT
-            wgp.player_id,
-            p.name,
-            g.game_year,
-            COUNT(DISTINCT wgp.game_id) AS total_watched,
-            SUM(CASE
-                WHEN g.best_player_id = wgp.player_id THEN
-                    CASE g.round
-                        WHEN 'First Round'       THEN 1
-                        WHEN 'Second Round'      THEN 2
-                        WHEN 'Conference Finals' THEN 3
-                        WHEN 'NBA Finals'        THEN 4
-                        ELSE 1
-                    END
-                ELSE 0
-            END) AS weighted_best
-        FROM watched_game_players wgp
-        JOIN players p ON p.id = wgp.player_id
-        JOIN watched_playoff_games g ON g.id = wgp.game_id
-        GROUP BY wgp.player_id, g.game_year
-        """
-    ).fetchall()
-
-    # Fetch per-player, per-round unweighted counts (across all years)
-    round_rows = conn.execute(
-        """
-        SELECT
-            wgp.player_id,
-            g.round,
-            COUNT(DISTINCT wgp.game_id) AS games_in_round,
-            SUM(CASE WHEN g.best_player_id = wgp.player_id THEN 1 ELSE 0 END) AS best_in_round
-        FROM watched_game_players wgp
-        JOIN watched_playoff_games g ON g.id = wgp.game_id
-        GROUP BY wgp.player_id, g.round
-        """
-    ).fetchall()
-    conn.close()
+        # Fetch per-player, per-round unweighted counts (across all years)
+        round_rows = conn.execute(
+            """
+            SELECT
+                wgp.player_id,
+                g.round,
+                COUNT(DISTINCT wgp.game_id) AS games_in_round,
+                SUM(CASE WHEN g.best_player_id = wgp.player_id THEN 1 ELSE 0 END) AS best_in_round
+            FROM watched_game_players wgp
+            JOIN watched_playoff_games g ON g.id = wgp.game_id
+            GROUP BY wgp.player_id, g.round
+            """
+        ).fetchall()
 
     # Build round lookup: {player_id: {round_label: {"best": n, "games": m}}}
     from collections import defaultdict
@@ -2108,91 +1874,85 @@ def players_for_year():
     year = request.args.get("year", type=int)
     if not year:
         return jsonify({"error": "year required"}), 400
-    conn = get_conn()
-    rows = conn.execute(
-        """
-        SELECT DISTINCT p.id, p.name
-        FROM players p
-        JOIN player_stats ps ON ps.player_id = p.id
-        JOIN seasons s ON s.id = ps.season_id
-        WHERE s.season_year = ?
-        ORDER BY p.name
-        """,
-        (year,),
-    ).fetchall()
-    conn.close()
+    with db_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT p.id, p.name
+            FROM players p
+            JOIN player_stats ps ON ps.player_id = p.id
+            JOIN seasons s ON s.id = ps.season_id
+            WHERE s.season_year = ?
+            ORDER BY p.name
+            """,
+            (year,),
+        ).fetchall()
     return jsonify([dict(r) for r in rows])
 
 
 @app.route("/api/player/<int:player_id>/watch_log")
 def player_watch_log(player_id):
-    conn = get_conn()
-    player = conn.execute("SELECT id FROM players WHERE id = ?", (player_id,)).fetchone()
-    if not player:
-        conn.close()
-        abort(404)
+    with db_conn() as conn:
+        player = conn.execute("SELECT id FROM players WHERE id = ?", (player_id,)).fetchone()
+        if not player:
+            abort(404)
 
-    best_count = conn.execute(
-        "SELECT COUNT(*) AS cnt FROM watched_playoff_games WHERE best_player_id = ?",
-        (player_id,),
-    ).fetchone()["cnt"]
+        best_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM watched_playoff_games WHERE best_player_id = ?",
+            (player_id,),
+        ).fetchone()["cnt"]
 
-    best_games = conn.execute(
-        """
-        SELECT g.id, g.game_year, g.home_team, g.away_team, g.winner_team,
-               g.round, g.game_of_round, g.conference, g.date_watched, g.notes
-        FROM watched_playoff_games g
-        WHERE g.best_player_id = ?
-        ORDER BY g.game_year DESC, g.date_watched DESC
-        """,
-        (player_id,),
-    ).fetchall()
+        best_games = conn.execute(
+            """
+            SELECT g.id, g.game_year, g.home_team, g.away_team, g.winner_team,
+                   g.round, g.game_of_round, g.conference, g.date_watched, g.notes
+            FROM watched_playoff_games g
+            WHERE g.best_player_id = ?
+            ORDER BY g.game_year DESC, g.date_watched DESC
+            """,
+            (player_id,),
+        ).fetchall()
 
-    important_games = conn.execute(
-        """
-        SELECT g.id, g.game_year, g.home_team, g.away_team, g.winner_team,
-               g.round, g.game_of_round, g.conference, g.date_watched,
-               g.best_player_id,
-               bp.name AS best_player_name
-        FROM watched_game_players wgp
-        JOIN watched_playoff_games g ON g.id = wgp.game_id
-        LEFT JOIN players bp ON bp.id = g.best_player_id
-        WHERE wgp.player_id = ? AND g.best_player_id != ?
-        ORDER BY g.game_year DESC, g.date_watched DESC
-        """,
-        (player_id, player_id),
-    ).fetchall()
+        important_games = conn.execute(
+            """
+            SELECT g.id, g.game_year, g.home_team, g.away_team, g.winner_team,
+                   g.round, g.game_of_round, g.conference, g.date_watched,
+                   g.best_player_id,
+                   bp.name AS best_player_name
+            FROM watched_game_players wgp
+            JOIN watched_playoff_games g ON g.id = wgp.game_id
+            LEFT JOIN players bp ON bp.id = g.best_player_id
+            WHERE wgp.player_id = ? AND g.best_player_id != ?
+            ORDER BY g.game_year DESC, g.date_watched DESC
+            """,
+            (player_id, player_id),
+        ).fetchall()
 
-    conn.close()
+        # Gather all years this player appeared in
+        all_years = set()
+        for g in best_games:
+            all_years.add(g["game_year"])
+        for g in important_games:
+            all_years.add(g["game_year"])
 
-    # Gather all years this player appeared in
-    all_years = set()
-    for g in best_games:
-        all_years.add(g["game_year"])
-    for g in important_games:
-        all_years.add(g["game_year"])
-
-    # Reuse _get_watch_kyle_by_player for correct round-weighted, year-normalised scores
-    conn2 = get_conn()
-    watch_by_year = {}
-    for yr in sorted(all_years):
-        yr_map = _get_watch_kyle_by_player(conn2, yr)
-        entry = yr_map.get(player_id)
-        if entry:
-            watch_by_year[yr] = {
-                "best_count":    entry["best_count"],
-                "total_watched": entry["total_watched"],
-                "raw_score":     entry["raw_score"],
-                "watch_kyle":    entry["watch_kyle"],
-                "best_pct":      round(entry["raw_score"] * 100, 1),
-            }
-        else:
-            # Player appeared in watched games this year but not in the map
-            watch_by_year[yr] = {
-                "best_count": 0, "total_watched": 0,
-                "raw_score": 0.0, "watch_kyle": None, "best_pct": 0.0,
-            }
-    conn2.close()
+        # Reuse _get_watch_kyle_by_player for correct round-weighted, year-normalised scores
+        watch_by_year = {}
+        for yr in sorted(all_years):
+            yr_map = _get_watch_kyle_by_player(conn, yr)
+            entry = yr_map.get(player_id)
+            if entry:
+                watch_by_year[yr] = {
+                    "best_count":    entry["best_count"],
+                    "total_watched": entry["total_watched"],
+                    "raw_score":     entry["raw_score"],
+                    "watch_kyle":    entry["watch_kyle"],
+                    "best_pct":      round(entry["raw_score"] * 100, 1),
+                }
+            else:
+                # Player appeared in watched games this year but not in the map
+                watch_by_year[yr] = {
+                    "best_count": 0, "total_watched": 0,
+                    "raw_score": 0.0, "watch_kyle": None, "best_pct": 0.0,
+                }
 
     # Overall summary
     total_watched_overall = sum(v["total_watched"] for v in watch_by_year.values())

@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "nba.db")
 
@@ -9,6 +10,22 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+@contextmanager
+def db_conn():
+    """Context manager that opens a DB connection and guarantees it is closed.
+
+    Usage::
+
+        with db_conn() as conn:
+            rows = conn.execute("SELECT ...").fetchall()
+    """
+    conn = get_conn()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_db():
