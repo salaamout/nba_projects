@@ -127,6 +127,16 @@ def init_db():
         );
     """)
 
+    # Indexes
+    cur.executescript("""
+        CREATE INDEX IF NOT EXISTS idx_player_stats_season   ON player_stats(season_id);
+        CREATE INDEX IF NOT EXISTS idx_player_stats_player   ON player_stats(player_id);
+        CREATE INDEX IF NOT EXISTS idx_selected_season       ON selected_players(season_id);
+        CREATE INDEX IF NOT EXISTS idx_pga_player_year_type  ON player_game_appearances(player_id, season_year, season_type);
+        CREATE INDEX IF NOT EXISTS idx_wpg_game_year         ON watched_playoff_games(game_year);
+        CREATE INDEX IF NOT EXISTS idx_wgp_game_player       ON watched_game_players(game_id, player_id);
+    """)
+
     # Migrations: bbref_playoff_fetch_log
     existing_fetch_log_cols = [row[1] for row in cur.execute("PRAGMA table_info(bbref_playoff_fetch_log)").fetchall()]
     if "fetch_status" not in existing_fetch_log_cols:

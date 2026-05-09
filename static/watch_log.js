@@ -310,8 +310,8 @@ function addImportantPlayer(player) {
 
 /* ── Modal ─────────────────────────────────────────────────────────── */
 async function openModal(game) {
-  document.getElementById("modal-title").textContent = game ? "Edit Game" : "Log a Game";
-  document.getElementById("edit-id").value = game ? game.id : "";
+  document.getElementById("modal-title").textContent = (game && game.id) ? "Edit Game" : "Log a Game";
+  document.getElementById("edit-id").value = (game && game.id) ? game.id : "";
   document.getElementById("f-home").value  = game ? game.home_team : "";
   document.getElementById("f-away").value  = game ? game.away_team : "";
   document.getElementById("f-date").value  = game ? game.date_watched : new Date().toISOString().slice(0, 10);
