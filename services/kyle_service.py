@@ -24,6 +24,17 @@ from services.watch_log_service import get_watch_kyle_by_player
 _KYLE_CACHE_MAX_SIZE = 32
 _kyle_cache: OrderedDict = OrderedDict()
 
+# ---------------------------------------------------------------------------
+# Module-level constants
+# ---------------------------------------------------------------------------
+
+# Default per-year accumulator used when a player has no data for a given year.
+ZERO_YEAR: dict = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None}
+
+# Minimum number of playoff games watched (within a player's peak window) for
+# that player to be included in the Least Squares ranking.
+MIN_GAMES_WATCHED: int = 5
+
 
 def _kyle_cache_set(key, value) -> None:
     if key in _kyle_cache:
@@ -244,7 +255,6 @@ def compute_peak_windows(conn, window: int) -> tuple[list[dict], dict]:
                 if wk and wk.get("watch_kyle") is not None:
                     yr_data["watch_kyle"] = wk["watch_kyle"]
 
-    ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None}
     peaks: list[dict] = []
 
     for pid, pdata in player_years.items():
@@ -345,7 +355,6 @@ def compute_best3year(conn, window: int = 3) -> list[dict]:
         """
     ).fetchall()
 
-    ZERO_YEAR = {"regular": 0.0, "playoffs": 0.0, "watch_kyle": None}
     result = []
     for entry in peaks:
         pid          = entry["player_id"]
@@ -386,7 +395,6 @@ def compute_best3year(conn, window: int = 3) -> list[dict]:
         if pid in peak_windows_map and peak_windows_map[pid][0] <= game_year <= peak_windows_map[pid][1]:
             player_game_counts[pid] += 1
 
-    MIN_GAMES_WATCHED = 5
     qualified_players = {pid for pid, cnt in player_game_counts.items() if cnt >= MIN_GAMES_WATCHED}
 
     comparisons: list[tuple[int, int]] = []

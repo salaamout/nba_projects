@@ -7,6 +7,7 @@ Output: same list with added keys:
     - <field>_norm     for every scored field
     - kyle_rating      final sum
 """
+from __future__ import annotations
 
 import numpy as np
 

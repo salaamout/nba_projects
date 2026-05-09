@@ -92,62 +92,71 @@ def _to_nba_abbr(bbref_abbr: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Sentinel end-year used in _ABBR_TO_TEAM_NAME_BY_YEAR for franchises that are
+# still active — chosen far enough in the future that range checks always pass.
+_CURRENT_ERA: int = 2099
+
 # Abbreviation → display team name mapping (for suggest-game cross-reference)
 # ---------------------------------------------------------------------------
 # Maps team abbreviations (as stored in player_game_appearances) to the full
 # team name used in watched_playoff_games.  Historical franchises use the name
 # that was correct at the time; callers should pass season_year to pick the
 # right name where a franchise relocated.
+#
+# Some abbreviations appear twice (e.g. "GOS"/"GSW" for Golden State Warriors,
+# "PHX"/"PHO" for Phoenix Suns).  Both variants are present intentionally:
+# bbref uses one abbreviation while nba_api uses another.  Both must resolve to
+# the same team name so cross-source lookups succeed.
 _ABBR_TO_TEAM_NAME_BY_YEAR: dict[str, list[tuple[int, int, str]]] = {
     # abbr: [(start_year, end_year, name), ...]  — end_year is inclusive last season
-    "ATL": [(1969, 2099, "Atlanta Hawks")],
-    "BOS": [(1947, 2099, "Boston Celtics")],
-    "BRK": [(2013, 2099, "Brooklyn Nets")],
+    "ATL": [(1969, _CURRENT_ERA, "Atlanta Hawks")],
+    "BOS": [(1947, _CURRENT_ERA, "Boston Celtics")],
+    "BRK": [(2013, _CURRENT_ERA, "Brooklyn Nets")],
     "NJN": [(1977, 2012, "New Jersey Nets")],
-    "NYK": [(1947, 2099, "New York Knicks")],
-    "PHI": [(1964, 2099, "Philadelphia 76ers")],
-    "PHL": [(1964, 2099, "Philadelphia 76ers")],
-    "TOR": [(1996, 2099, "Toronto Raptors")],
-    "CHI": [(1967, 2099, "Chicago Bulls")],
-    "CLE": [(1971, 2099, "Cleveland Cavaliers")],
-    "DET": [(1958, 2099, "Detroit Pistons")],
-    "IND": [(1977, 2099, "Indiana Pacers")],
-    "MIL": [(1969, 2099, "Milwaukee Bucks")],
-    "DAL": [(1981, 2099, "Dallas Mavericks")],
-    "HOU": [(1972, 2099, "Houston Rockets")],
-    "MEM": [(2002, 2099, "Memphis Grizzlies")],
+    "NYK": [(1947, _CURRENT_ERA, "New York Knicks")],
+    "PHI": [(1964, _CURRENT_ERA, "Philadelphia 76ers")],
+    "PHL": [(1964, _CURRENT_ERA, "Philadelphia 76ers")],
+    "TOR": [(1996, _CURRENT_ERA, "Toronto Raptors")],
+    "CHI": [(1967, _CURRENT_ERA, "Chicago Bulls")],
+    "CLE": [(1971, _CURRENT_ERA, "Cleveland Cavaliers")],
+    "DET": [(1958, _CURRENT_ERA, "Detroit Pistons")],
+    "IND": [(1977, _CURRENT_ERA, "Indiana Pacers")],
+    "MIL": [(1969, _CURRENT_ERA, "Milwaukee Bucks")],
+    "DAL": [(1981, _CURRENT_ERA, "Dallas Mavericks")],
+    "HOU": [(1972, _CURRENT_ERA, "Houston Rockets")],
+    "MEM": [(2002, _CURRENT_ERA, "Memphis Grizzlies")],
     "VAN": [(1996, 2001, "Vancouver Grizzlies")],
-    "NOP": [(2014, 2099, "New Orleans Pelicans")],
+    "NOP": [(2014, _CURRENT_ERA, "New Orleans Pelicans")],
     "NOH": [(2003, 2013, "New Orleans Hornets")],
     "NOK": [(2006, 2007, "New Orleans/Oklahoma City Hornets")],
-    "SAS": [(1977, 2099, "San Antonio Spurs")],
-    "SAN": [(1977, 2099, "San Antonio Spurs")],
-    "OKC": [(2009, 2099, "Oklahoma City Thunder")],
+    "SAS": [(1977, _CURRENT_ERA, "San Antonio Spurs")],
+    "SAN": [(1977, _CURRENT_ERA, "San Antonio Spurs")],
+    "OKC": [(2009, _CURRENT_ERA, "Oklahoma City Thunder")],
     "SEA": [(1968, 2008, "Seattle SuperSonics")],
-    "DEN": [(1977, 2099, "Denver Nuggets")],
-    "MIN": [(1990, 2099, "Minnesota Timberwolves")],
-    "UTA": [(1980, 2099, "Utah Jazz")],
-    "UTH": [(1980, 2099, "Utah Jazz")],
+    "DEN": [(1977, _CURRENT_ERA, "Denver Nuggets")],
+    "MIN": [(1990, _CURRENT_ERA, "Minnesota Timberwolves")],
+    "UTA": [(1980, _CURRENT_ERA, "Utah Jazz")],
+    "UTH": [(1980, _CURRENT_ERA, "Utah Jazz")],
     "NOJ": [(1975, 1979, "New Orleans Jazz")],
-    "POR": [(1971, 2099, "Portland Trail Blazers")],
-    "GOS": [(1972, 2099, "Golden State Warriors")],
-    "GSW": [(1972, 2099, "Golden State Warriors")],
-    "LAC": [(1985, 2099, "Los Angeles Clippers")],
+    "POR": [(1971, _CURRENT_ERA, "Portland Trail Blazers")],
+    "GOS": [(1972, _CURRENT_ERA, "Golden State Warriors")],
+    "GSW": [(1972, _CURRENT_ERA, "Golden State Warriors")],
+    "LAC": [(1985, _CURRENT_ERA, "Los Angeles Clippers")],
     "SDC": [(1979, 1984, "San Diego Clippers")],
-    "LAL": [(1961, 2099, "Los Angeles Lakers")],
+    "LAL": [(1961, _CURRENT_ERA, "Los Angeles Lakers")],
     "MNL": [(1949, 1960, "Minneapolis Lakers")],
-    "PHX": [(1969, 2099, "Phoenix Suns")],
-    "PHO": [(1969, 2099, "Phoenix Suns")],
-    "SAC": [(1986, 2099, "Sacramento Kings")],
+    "PHX": [(1969, _CURRENT_ERA, "Phoenix Suns")],
+    "PHO": [(1969, _CURRENT_ERA, "Phoenix Suns")],
+    "SAC": [(1986, _CURRENT_ERA, "Sacramento Kings")],
     "KCK": [(1976, 1985, "Kansas City Kings")],
     "CIN": [(1958, 1972, "Cincinnati Royals")],
     "WSB": [(1974, 1997, "Washington Bullets")],
-    "WAS": [(1998, 2099, "Washington Wizards")],
-    "MIA": [(1989, 2099, "Miami Heat")],
-    "ORL": [(1990, 2099, "Orlando Magic")],
-    "CHA": [(1989, 2002, "Charlotte Hornets"), (2015, 2099, "Charlotte Hornets")],
+    "WAS": [(1998, _CURRENT_ERA, "Washington Wizards")],
+    "MIA": [(1989, _CURRENT_ERA, "Miami Heat")],
+    "ORL": [(1990, _CURRENT_ERA, "Orlando Magic")],
+    "CHA": [(1989, 2002, "Charlotte Hornets"), (2015, _CURRENT_ERA, "Charlotte Hornets")],
     "CHH": [(1989, 2002, "Charlotte Hornets")],
-    "CHO": [(2015, 2099, "Charlotte Hornets")],
+    "CHO": [(2015, _CURRENT_ERA, "Charlotte Hornets")],
     "BUF": [(1971, 1978, "Buffalo Braves")],
     "CHP": [(1950, 1952, "Chicago Stags")],
     "BAL": [(1964, 1973, "Baltimore Bullets")],
@@ -681,12 +690,11 @@ _TEAM_ABBR_ALIASES: dict[str, str] = {
 
 def _record_league_game_log_fetch(season_year: int, season_type: str, player_or_team: str, conn):
     """Record that the LeagueGameLog for this season/type/mode has been fully fetched."""
-    import datetime
     try:
         conn.execute(
             "INSERT OR REPLACE INTO league_game_log_fetch_log "
             "(season_year, season_type, player_or_team, fetched_at) VALUES (?,?,?,?)",
-            (season_year, season_type, player_or_team, datetime.datetime.utcnow().isoformat()),
+            (season_year, season_type, player_or_team, datetime.utcnow().isoformat()),
         )
         conn.commit()
     except Exception as exc:

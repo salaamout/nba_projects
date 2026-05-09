@@ -294,6 +294,7 @@ There are zero test files in the project. The following areas are highest priori
 Use an in-memory SQLite database (`":memory:"`) via a fixture to avoid touching `nba.db`.
 
 ### 7.3 `scraper.py` — Scraping helpers
+(DONE)
 
 ```
 tests/test_scraper.py
@@ -310,8 +311,8 @@ Mock `requests.get` with `unittest.mock.patch` or `responses`:
 - `test_abbr_to_team_name_with_year` — `"CHA", 1999` → `"Charlotte Hornets"`, `"CHA", 2020` → `"Charlotte Hornets"`
 - `test_bbref_to_nba_abbr` — "PHO" → "PHX", passthrough for unlisted
 
-### 7.4 `app.py` — API endpoints (DONE)
-
+### 7.4 `app.py` — API endpoints
+(DONE)
 ```
 tests/test_app.py
 ```
@@ -348,14 +349,14 @@ Use Flask's built-in `app.test_client()` with an in-memory DB fixture:
 Many route handlers have good inline comments, but there is no machine-readable API contract (OpenAPI/Swagger). For a project of this size, even a simple `docs/api.md` listing all endpoints, parameters, and response shapes would be valuable.
 
 ### 8.3 `README.md` does not describe the data model or the K.Y.L.E. formula
-**Severity: Low**
+**Severity: Low** (DONE)
 
 New contributors (or future-you) will not understand what fields like `on_off_asterisk`, `watch_kyle`, or `points_per_shot` mean without reading the source. The `kyle.py` module docstring is good — surface it in the README.
 
 ---
 
 ## 9. Code Style & Minor Cleanups
-
+(DONE)
 | Item | File | Suggestion |
 |---|---|---|
 | `from collections import defaultdict` is imported **inside** two functions | `app.py` | Move to top-level imports |
