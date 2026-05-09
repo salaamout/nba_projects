@@ -190,16 +190,18 @@ def compute_leaderboard(conn) -> list[dict]:
 
     year_max_raw = {yr: max(raws.values(), default=0.0) for yr, raws in year_player_raw.items()}
 
+    # Build O(1) lookup: (player_id, game_year) -> total_watched to avoid O(n²) scan
+    watched_by_player_year: dict[tuple[int, int], int] = {
+        (r["player_id"], r["game_year"]): (r["total_watched"] or 0)
+        for r in rows
+    }
+
     # Sum normalised watch_kyle per player across all years
     player_watch_kyle_sum: dict[int, float] = defaultdict(float)
     for yr, player_raws in year_player_raw.items():
         max_raw = year_max_raw[yr]
         for pid, raw in player_raws.items():
-            M_yr = next(
-                (r["total_watched"] for r in rows
-                 if r["player_id"] == pid and r["game_year"] == yr),
-                0,
-            )
+            M_yr = watched_by_player_year.get((pid, yr), 0)
             if M_yr == 0:
                 continue
             wk = round((raw / max_raw) * 2 - 1, 3) if max_raw > 0 else 0.0

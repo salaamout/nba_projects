@@ -81,12 +81,22 @@ def _ensure_appearances(conn, pid: int, meta: dict, player_name: str, years: lis
     bbref_url = meta.get("bbref_url")
     any_missing = False
 
+    # Batch check which years are already cached — one query instead of one per year
+    if years:
+        ph = ",".join("?" * len(years))
+        cached_years: set[int] = {
+            row[0]
+            for row in conn.execute(
+                f"SELECT DISTINCT season_year FROM player_game_appearances "
+                f"WHERE player_id=? AND season_year IN ({ph}) AND season_type='playoffs'",
+                (pid, *years),
+            ).fetchall()
+        }
+    else:
+        cached_years = set()
+
     for year in years:
-        if conn.execute(
-            "SELECT 1 FROM player_game_appearances "
-            "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
-            (pid, year),
-        ).fetchone():
+        if year in cached_years:
             continue  # already cached
 
         if not nba_id:
@@ -247,10 +257,10 @@ def get_suggestions(conn, window: int, skip: int) -> dict:
         p1_meta = player_meta.get(p1_id, {})
         p2_meta = player_meta.get(p2_id, {})
 
-        # Ensure appearances cached for every overlap year
-        for year in range(overlap_start, overlap_end + 1):
-            _ensure_appearances(conn, p1_id, p1_meta, pa["name"], [year])
-            _ensure_appearances(conn, p2_id, p2_meta, pb["name"], [year])
+        # Ensure appearances cached for every overlap year — one batch call per player
+        overlap_years_list = list(range(overlap_start, overlap_end + 1))
+        _ensure_appearances(conn, p1_id, p1_meta, pa["name"], overlap_years_list)
+        _ensure_appearances(conn, p2_id, p2_meta, pb["name"], overlap_years_list)
 
         for game in _find_co_appearance_games(conn, p1_id, p2_id, overlap_start, overlap_end):
             season_year    = game["season_year"]
@@ -396,13 +406,18 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
             pname = meta.get("name", role_name)
             if _ensure_appearances(conn, pid, meta, pname, overlap_years):
                 any_data_missing = True
-            # Re-check after fetch attempt
-            for year in overlap_years:
-                if not conn.execute(
-                    "SELECT 1 FROM player_game_appearances "
-                    "WHERE player_id=? AND season_year=? AND season_type='playoffs' LIMIT 1",
-                    (pid, year),
-                ).fetchone():
+            # Re-check after fetch attempt — one batch query per player
+            if overlap_years:
+                ph = ",".join("?" * len(overlap_years))
+                present = {
+                    row[0]
+                    for row in conn.execute(
+                        f"SELECT DISTINCT season_year FROM player_game_appearances "
+                        f"WHERE player_id=? AND season_year IN ({ph}) AND season_type='playoffs'",
+                        (pid, *overlap_years),
+                    ).fetchall()
+                }
+                if any(yr not in present for yr in overlap_years):
                     any_data_missing = True
 
         if any_data_missing and first_missing_opp is None:

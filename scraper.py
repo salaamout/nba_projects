@@ -497,6 +497,11 @@ def _uncomment_tables(soup: BeautifulSoup) -> BeautifulSoup:
 
 
 def _safe_float(val: str):
+    """Convert a scraped string value to float, returning None for empty/missing values.
+
+    Handles None, empty strings, en-dashes ("—"), and plain hyphens ("-") that
+    basketball-reference uses to denote unavailable stats.
+    """
     if val is None:
         return None
     val = val.strip()

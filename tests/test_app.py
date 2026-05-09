@@ -102,14 +102,12 @@ def _seed_player_and_stats(client, season_id, player_name="LeBron James"):
 # ---------------------------------------------------------------------------
 
 def test_get_seasons_empty(client):
-    """GET /api/seasons with a fresh DB returns only the seeded 2026 season."""
+    """GET /api/seasons with a fresh DB returns an empty list (no seed rows)."""
     resp = client.get("/api/seasons")
     assert resp.status_code == 200
     data = _json(resp)
-    # init_db seeds one row: 2026 Regular Season
     assert isinstance(data, list)
-    years = [s["season_year"] for s in data]
-    assert 2026 in years
+    assert data == []
 
 
 def test_create_season_success(client):

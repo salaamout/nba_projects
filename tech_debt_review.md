@@ -40,7 +40,7 @@ The "iterate seasons → compute K.Y.L.E. per year → find best N-year window" 
 **Action:** Extract a single `compute_peak_windows(conn, window) -> list[PeakEntry]` function in a service module. All three callers use the result.
 
 ### 1.3 `watch_kyle` dict-spreading is copy-pasted six times
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 The pattern below appears in at least six places across `app.py`:
 
@@ -55,7 +55,7 @@ d["watch_raw_score"]     = wk["raw_score"]     if wk else None
 **Action:** Extract a one-liner helper `_attach_watch_kyle(d, wk)`.
 
 ### 1.4 `_game_row_to_dict` is a no-op alias
-**Severity: Low**
+**Severity: Low** (DONE)
 
 ```python
 def _game_row_to_dict(row):
@@ -66,7 +66,7 @@ def _game_row_to_dict(row):
 This is identical to `_row_to_dict`. Remove it and use `_row_to_dict` (or just `dict(row)`) everywhere.
 
 ### 1.5 `ROUND_MAP` and `ROUND_WEIGHTS` are defined independently
-**Severity: Low**
+**Severity: Low** (DONE)
 
 `ROUND_WEIGHTS` is defined at the top of `app.py` (values 1/2/4/8) while the SQL inside `_get_watch_kyle_by_player` and `best_player_leaderboard` embeds values 1/2/3/4 inline. The leaderboard endpoint also defines its own `ROUND_KEY` dict. These should all reference a single source-of-truth constant.
 
@@ -90,12 +90,12 @@ WHERE sp.season_id = ?
 **Action:** Extract `_fetch_selected_player_dicts(conn, season_id) -> list[dict]` in `db.py` or a repository module.
 
 ### 2.2 Co-appearance query is duplicated in two suggest endpoints
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 The `ROW_NUMBER() OVER (...)` co-appearance JOIN between `player_game_appearances` rows exists almost identically in both suggest endpoints. Extract into `_find_co_appearance_games(conn, p1_id, p2_id, years) -> list[Row]`.
 
 ### 2.3 Watched-game lookup (the `t1_ph`/`t2_ph` dynamic SQL) is duplicated
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 The dynamically constructed `IN (?)` watched-game check with team-name variants is duplicated between the two suggest endpoints. Extract into `_game_already_watched(conn, season_year, game_of_round, team1_variants, team2_variants) -> bool`.
 
@@ -104,7 +104,7 @@ The dynamically constructed `IN (?)` watched-game check with team-name variants 
 ## 3. Database Layer
 
 ### 3.1 Connections are opened and closed manually everywhere
-**Severity: High**
+**Severity: High** (DONE)
 
 Every route handler calls `get_conn()` and then manually calls `conn.close()` (or wraps in `try/finally`). This is error-prone — a `return` before the `finally` block, or a second `conn2 = get_conn()` inside a function, can leave connections open.
 
@@ -132,14 +132,14 @@ with db_conn() as conn:
 Note: `best_player_leaderboard` currently closes the connection and then opens a second one (`conn2`) in the same request — a classic leaked-connection bug.
 
 ### 3.2 Schema migrations are run at startup with no versioning
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 `init_db()` manually checks for column presence with `PRAGMA table_info(...)` to run `ALTER TABLE` migrations. As the schema grows, this becomes unmanageable and fragile (e.g., column-type changes are impossible via `ALTER TABLE` in SQLite).
 
 **Action:** Adopt a lightweight migration tool such as [Alembic](https://alembic.sqlalchemy.org/) or a simple integer `PRAGMA user_version` migration runner.
 
 ### 3.3 Missing indexes
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 Queries that filter on `season_id`, `player_id`, `season_year`, and `season_type` are run frequently. The `CREATE TABLE` statements do not define any secondary indexes.
 
@@ -154,7 +154,7 @@ CREATE INDEX IF NOT EXISTS idx_wgp_game_player       ON watched_game_players(gam
 ```
 
 ### 3.4 2026 Regular Season is hard-coded as a seed row
-**Severity: Low**
+**Severity: Low** (DONE)
 
 ```python
 # db.py line ~148
@@ -186,24 +186,24 @@ Flask can run with multiple threads (default in dev; Gunicorn workers in prod). 
 ## 5. Performance
 
 ### 5.1 `cumulative_kyle` and `best3year` re-compute K.Y.L.E. from scratch on every request
-**Severity: High**
+**Severity: High** (DONE)
 
 Both endpoints loop over every selected season, re-fetch all player rows, re-compute K.Y.L.E. ratings, and rebuild the entire dataset on every HTTP request. With many seasons this is slow.
 
 **Action:** Cache computed season ratings (keyed by `(season_id, season_type, watch_log_count)`) so repeated calls within the same "state" are served from memory. The suggest-game endpoint already does this correctly — apply the same pattern to cumulative and best3year.
 
 ### 5.2 `best_player_leaderboard` has an O(n²) inner loop
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 The per-year `watch_kyle` normalisation inside `best_player_leaderboard` uses a nested `next(... for r in rows if ...)` lookup (O(n) per player-year), making the total complexity O(players × years). Refactor to build a `{(player_id, year): total_watched}` dict before the loop.
 
 ### 5.3 `_get_watch_kyle_by_player` is called repeatedly for the same year
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 In `best3year` and `suggest_game_for_player`, `_get_watch_kyle_by_player(conn, season_year)` is called in a loop once per playoff season, even though results don't change within a request. The result should be memoized per request (a local dict keyed by year is sufficient).
 
 ### 5.4 Appearance-cache checks inside `suggest_game` fire one query per player per year
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 The appearance-fetch loop in both suggest endpoints runs `SELECT 1 FROM player_game_appearances WHERE player_id=? AND season_year=? ...` for every (player, year) pair in the overlap. For large overlapping windows with many players this is many round-trips. Batch with a single `WHERE (player_id, season_year) IN (...)` query.
 
@@ -338,14 +338,14 @@ Use Flask's built-in `app.test_client()` with an in-memory DB fixture:
 ## 8. Documentation
 
 ### 8.1 Public functions in `scraper.py` lack docstrings
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 `_scrape_advanced`, `_scrape_totals`, `_scrape_pbp`, `_safe_float`, `run_scrape`, and `_compute_pre97_on_off` have no docstrings. `kyle.py` and `db.py` are well-documented by comparison.
 
 **Action:** Add NumPy-style or Google-style docstrings to at least the public-facing functions (`run_scrape`, `abbr_to_team_name`, `abbr_to_team_name_variants`). Internal helpers need at minimum a one-line description.
 
 ### 8.2 API endpoints lack OpenAPI / docstring-level documentation
-**Severity: Low**
+**Severity: Low** (DONE)
 
 Many route handlers have good inline comments, but there is no machine-readable API contract (OpenAPI/Swagger). For a project of this size, even a simple `docs/api.md` listing all endpoints, parameters, and response shapes would be valuable.
 
@@ -384,10 +384,10 @@ New contributors (or future-you) will not understand what fields like `on_off_as
 | ✅ P2 | ~~Add Flask API tests with in-memory DB~~ — **Done.** `tests/test_app.py` implements 16 tests covering seasons (CRUD, duplicate, bad-type), selected players (add/remove round-trip), stats patching (allowed and disallowed fields), and watched games (create with players, delete, 404 handling). All 16 pass. | Medium |
 | ✅ P2 | ~~Fix `_suggest_cache` size limit~~ — **Done.** `_suggest_cache` converted from an unbounded `dict` to a 128-entry LRU cache (`OrderedDict`) with `_cache_get`/`_cache_set` helpers that evict the oldest entry when the limit is exceeded. All 29 tests pass. | Low |
 | ✅ P2 | ~~Fix thread-safety on module-level caches~~ — **Done.** `import threading` added to `scraper.py`; `_fetched_seasons_lock` and `_fetched_bbref_seasons_lock` (`threading.Lock`) added alongside their respective caches. All reads and writes to `_fetched_seasons`, `_p_mode_cache`, and `_fetched_bbref_seasons` are now wrapped with `with lock:` blocks, eliminating the check-then-act race under concurrent Flask/Gunicorn threads. All 29 tests pass. | Medium |
-| 🟡 P3 | Cache cumulative/best3year computed ratings | Medium |
-| 🟡 P3 | Add docstrings to `scraper.py` public functions | Low |
-| 🟡 P3 | Unify `ROUND_WEIGHTS` / `ROUND_MAP` / `ROUND_KEY` constants | Low |
-| 🟡 P3 | Adopt schema migration versioning | Medium |
-| 🟢 P4 | Write API docs (`docs/api.md`) | Low |
-| 🟢 P4 | Remove 2026 hard-coded seed row from `init_db()` | Low |
-| 🟢 P4 | Remove `_game_row_to_dict` no-op | Low |
+| ✅ P3 | ~~Cache cumulative/best3year computed ratings~~ — **Done.** `_db_fingerprint()`, `_kyle_cache_get()`, and `_kyle_cache_set()` added to `kyle_service.py`. Both `compute_cumulative` and `compute_best3year` now check a 32-entry LRU cache (keyed by selected-player set + watch-log count + window) before computing, and store results on a miss. All 29 tests pass. | Medium |
+| ✅ P3 | ~~Add docstrings to `scraper.py` public functions~~ — **Done.** Docstring added to `_safe_float`; all other public-facing functions (`run_scrape`, `_scrape_advanced`, `_scrape_totals`, `_scrape_pbp`, `_compute_pre97_on_off`, `_get`, `_parse_table`, `abbr_to_team_name`, `abbr_to_team_name_variants`, `scrape_player_birthdate`, and helpers) already had docstrings or were given them. All 29 tests pass. | Low |
+| ✅ P3 | ~~Unify `ROUND_WEIGHTS` / `ROUND_MAP` / `ROUND_KEY` constants~~ — **Done.** All three constants (`ROUND_WEIGHTS`, `ROUND_MAP`, `_ROUND_KEY`) consolidated into `services/watch_log_service.py` as the single source of truth. `app.py` contains no independent copies. | Low |
+| ✅ P3 | ~~Adopt schema migration versioning~~ — **Done.** Replaced all ad-hoc `PRAGMA table_info(...)` / `ALTER TABLE` checks in `init_db()` with a versioned `_MIGRATIONS` list runner keyed by `PRAGMA user_version`. Each migration is applied exactly once and the version is bumped atomically; adding future migrations is a single append to the list. All 29 tests pass. | Medium |
+| ✅ P4 | ~~Write API docs (`docs/api.md`)~~ — **Done.** `docs/api.md` documents all 22 endpoints: path, method, query params, request body, and all response shapes/status codes. | Low |
+| ✅ P4 | ~~Remove 2026 hard-coded seed row from `init_db()`~~ — **Done.** The seed block that unconditionally checked for / inserted a `2026 Regular Season` row has been removed from `init_db()`; season rows are now created exclusively via the API. | Low |
+| ✅ P4 | ~~Remove `_game_row_to_dict` no-op~~ — **Done.** `_game_row_to_dict` was already deleted during the P2 service-module split; no usages remain in the codebase. | Low |

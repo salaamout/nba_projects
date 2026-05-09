@@ -137,43 +137,53 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_wgp_game_player       ON watched_game_players(game_id, player_id);
     """)
 
-    # Migrations: bbref_playoff_fetch_log
-    existing_fetch_log_cols = [row[1] for row in cur.execute("PRAGMA table_info(bbref_playoff_fetch_log)").fetchall()]
-    if "fetch_status" not in existing_fetch_log_cols:
-        cur.execute("ALTER TABLE bbref_playoff_fetch_log ADD COLUMN fetch_status TEXT NOT NULL DEFAULT 'success'")
-    if "fetched_at" not in existing_fetch_log_cols:
-        cur.execute("ALTER TABLE bbref_playoff_fetch_log ADD COLUMN fetched_at TEXT")
+    # ---------------------------------------------------------------------------
+    # Schema migration runner — keyed by PRAGMA user_version
+    #
+    # To add a new migration:
+    #   1. Append a (description, [sql, ...]) tuple to _MIGRATIONS below.
+    #   2. The runner will apply it exactly once on the next startup and bump
+    #      user_version automatically.  Never edit or reorder existing entries.
+    # ---------------------------------------------------------------------------
+    _MIGRATIONS: list[tuple[str, list[str]]] = [
+        # v1 — columns added before versioning was introduced
+        (
+            "Add fetch_status/fetched_at to bbref_playoff_fetch_log; "
+            "opp_abbr to player_game_appearances; "
+            "playoff_games/on_off_asterisk to player_stats; "
+            "bbref_url/birthdate/nba_id to players",
+            [
+                "ALTER TABLE bbref_playoff_fetch_log ADD COLUMN fetch_status TEXT NOT NULL DEFAULT 'success'",
+                "ALTER TABLE bbref_playoff_fetch_log ADD COLUMN fetched_at TEXT",
+                "ALTER TABLE player_game_appearances ADD COLUMN opp_abbr TEXT",
+                "ALTER TABLE player_stats ADD COLUMN playoff_games INTEGER",
+                "ALTER TABLE player_stats ADD COLUMN on_off_asterisk INTEGER DEFAULT 0",
+                "ALTER TABLE players ADD COLUMN bbref_url TEXT",
+                "ALTER TABLE players ADD COLUMN birthdate TEXT",
+                "ALTER TABLE players ADD COLUMN nba_id INTEGER",
+            ],
+        ),
+        # v2 — add new migrations here, e.g.:
+        # ("Short description", ["ALTER TABLE ..."]),
+    ]
 
-    # Migrations: player_game_appearances
-    existing_pga_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_game_appearances)").fetchall()]
-    if "opp_abbr" not in existing_pga_cols:
-        cur.execute("ALTER TABLE player_game_appearances ADD COLUMN opp_abbr TEXT")
-
-    # Migrations: player_stats
-    existing_cols = [row[1] for row in cur.execute("PRAGMA table_info(player_stats)").fetchall()]
-    if "playoff_games" not in existing_cols:
-        cur.execute("ALTER TABLE player_stats ADD COLUMN playoff_games INTEGER")
-    if "on_off_asterisk" not in existing_cols:
-        cur.execute("ALTER TABLE player_stats ADD COLUMN on_off_asterisk INTEGER DEFAULT 0")
-
-    # Migrations: players
-    existing_player_cols = [row[1] for row in cur.execute("PRAGMA table_info(players)").fetchall()]
-    if "bbref_url" not in existing_player_cols:
-        cur.execute("ALTER TABLE players ADD COLUMN bbref_url TEXT")
-    if "birthdate" not in existing_player_cols:
-        cur.execute("ALTER TABLE players ADD COLUMN birthdate TEXT")
-    if "nba_id" not in existing_player_cols:
-        cur.execute("ALTER TABLE players ADD COLUMN nba_id INTEGER")
-
-    # Seed the 2026 Regular Season row if it doesn't exist
-    cur.execute(
-        "SELECT id FROM seasons WHERE season_year = 2026 AND season_type = 'regular'"
-    )
-    if cur.fetchone() is None:
-        cur.execute(
-            "INSERT INTO seasons (label, season_year, season_type) VALUES (?, ?, ?)",
-            ("2026 Regular Season", 2026, "regular"),
-        )
+    current_version: int = cur.execute("PRAGMA user_version").fetchone()[0]
+    for version, (description, statements) in enumerate(_MIGRATIONS, start=1):
+        if current_version >= version:
+            continue  # already applied
+        for sql in statements:
+            try:
+                cur.execute(sql)
+            except Exception as exc:  # noqa: BLE001
+                # Column may already exist on databases created after the base
+                # schema was updated — treat as a no-op.
+                if "duplicate column name" in str(exc).lower():
+                    pass
+                else:
+                    raise
+        # user_version cannot be set via a bound parameter
+        cur.execute(f"PRAGMA user_version = {version}")
+        current_version = version
 
     conn.commit()
     conn.close()

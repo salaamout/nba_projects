@@ -9,10 +9,54 @@ compute_best3year(conn, window) -> list[dict]
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 
 import kyle
 from services.watch_log_service import get_watch_kyle_by_player
+
+# ---------------------------------------------------------------------------
+# LRU cache for computed ratings (keyed by DB fingerprint)
+# Avoids re-computing from scratch on every HTTP request when data hasn't
+# changed.  The cache key encodes the selected-player set and watch-log count
+# so any mutation to the DB automatically produces a cache miss.
+# ---------------------------------------------------------------------------
+
+_KYLE_CACHE_MAX_SIZE = 32
+_kyle_cache: OrderedDict = OrderedDict()
+
+
+def _kyle_cache_set(key, value) -> None:
+    if key in _kyle_cache:
+        _kyle_cache.move_to_end(key)
+    _kyle_cache[key] = value
+    while len(_kyle_cache) > _KYLE_CACHE_MAX_SIZE:
+        _kyle_cache.popitem(last=False)
+
+
+def _kyle_cache_get(key):
+    if key not in _kyle_cache:
+        return None
+    _kyle_cache.move_to_end(key)
+    return _kyle_cache[key]
+
+
+def _db_fingerprint(conn) -> tuple:
+    """Return a hashable fingerprint of the mutable DB state.
+
+    Encodes the full set of selected-player rows (by player_id + season_id)
+    and the count of watched playoff games so that any change to either
+    produces a different key and forces a cache miss.
+    """
+    selected = tuple(sorted(
+        (r[0], r[1])
+        for r in conn.execute(
+            "SELECT player_id, season_id FROM selected_players"
+        ).fetchall()
+    ))
+    watch_count = conn.execute(
+        "SELECT COUNT(*) FROM watched_playoff_games"
+    ).fetchone()[0]
+    return (selected, watch_count)
 
 
 # ---------------------------------------------------------------------------
@@ -59,9 +103,18 @@ def compute_cumulative(conn) -> list[dict]:
     Only seasons that have at least one selected player contribute a rating.
     Negative ratings are excluded (same rule as the original endpoint).
 
+    Results are cached in an in-process LRU cache keyed by a DB fingerprint
+    (selected-player set + watch-log count) so repeated requests within the
+    same "state" are served from memory without re-computing.
+
     Returns a list sorted by total_kyle descending, each entry containing:
     player_id, name, regular_kyle, playoffs_kyle, total_kyle.
     """
+    cache_key = ("cumulative", _db_fingerprint(conn))
+    cached = _kyle_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     seasons = conn.execute(
         """
         SELECT DISTINCT s.id, s.season_type, s.season_year
@@ -113,6 +166,7 @@ def compute_cumulative(conn) -> list[dict]:
         result.append(entry)
 
     result.sort(key=lambda x: x["total_kyle"], reverse=True)
+    _kyle_cache_set(cache_key, result)
     return result
 
 
@@ -241,8 +295,17 @@ def compute_best3year(conn, window: int = 3) -> list[dict]:
       playoff_watched, playoff_played, window,
       ls_score, ls_wins, ls_losses, ls_comparisons.
 
+    Results are cached in an in-process LRU cache keyed by (window, DB
+    fingerprint) so repeated requests with the same window size and unchanged
+    data are served from memory without re-computing.
+
     Returns sorted by best_window_total descending.
     """
+    cache_key = ("best3year", window, _db_fingerprint(conn))
+    cached = _kyle_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     # Pre-fetch playoff game counts for supplementary fields
     all_playoff_played: dict[tuple[int, int], int] = {}
     for r in conn.execute(
@@ -362,4 +425,5 @@ def compute_best3year(conn, window: int = 3) -> list[dict]:
         entry["ls_comparisons"]  = w + l
 
     result.sort(key=lambda x: x["best_window_total"], reverse=True)
+    _kyle_cache_set(cache_key, result)
     return result
