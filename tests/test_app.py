@@ -203,6 +203,12 @@ def test_add_and_remove_selected(client):
     assert all(p["player_id"] != player_id for p in selected_after)
 
 
+def test_remove_selected_not_found(client):
+    # Deleting a non-existent selected row should return 404
+    resp = client.delete("/api/selected/999999")
+    assert resp.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # All players
 # ---------------------------------------------------------------------------

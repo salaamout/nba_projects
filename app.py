@@ -1,6 +1,8 @@
 import logging
+import sqlite3
 
 from flask import Flask, jsonify, request, render_template, abort
+from werkzeug.exceptions import HTTPException
 
 from db import init_db, db_conn
 from scraper import run_scrape
@@ -13,6 +15,16 @@ import services.suggest_service as suggest_service
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+@app.errorhandler(Exception)
+def _unhandled_exception(exc):
+    """Catch-all: pass HTTP exceptions through; log and return JSON 500 for everything else."""
+    if isinstance(exc, HTTPException):
+        return exc
+    logger.exception("Unhandled exception")
+    return jsonify({"error": "Internal server error", "message": str(exc)}), 500
+
 
 # ---------------------------------------------------------------------------
 # Initialise DB on startup
@@ -252,7 +264,9 @@ def add_selected():
 @app.route("/api/selected/<int:selected_id>", methods=["DELETE"])
 def remove_selected(selected_id):
     with db_conn() as conn:
-        conn.execute("DELETE FROM selected_players WHERE id = ?", (selected_id,))
+        cur = conn.execute("DELETE FROM selected_players WHERE id = ?", (selected_id,))
+        if cur.rowcount == 0:
+            return jsonify({"error": "not found"}), 404
         conn.commit()
     return jsonify({"ok": True})
 
@@ -369,8 +383,8 @@ def suggest_game():
         with db_conn() as conn:
             result = suggest_service.get_suggestions(conn, window, skip)
         return jsonify(result)
-    except Exception as exc:
-        logger.exception("suggest_game error")
+    except sqlite3.Error as exc:
+        logger.exception("suggest_game db error")
         return jsonify({"result": "error", "message": str(exc)}), 500
 
 
@@ -394,8 +408,8 @@ def suggest_game_for_player():
                 conn, player_id, window, skip, player_row
             )
         return jsonify(result)
-    except Exception as exc:
-        logger.exception("suggest_game_for_player error")
+    except sqlite3.Error as exc:
+        logger.exception("suggest_game_for_player db error")
         return jsonify({"result": "error", "message": str(exc)}), 500
 
 
@@ -405,16 +419,19 @@ def suggest_game_for_player():
 
 @app.route("/api/stats/<int:stats_id>", methods=["PATCH"])
 def patch_stats(stats_id):
-    data    = request.get_json(force=True)
-    allowed = {"defense", "position"}
-    updates = {k: v for k, v in data.items() if k in allowed}
+    data = request.get_json(force=True)
+    # Explicit mapping prevents any f-string / dynamic SQL fragility.
+    _PATCHABLE = {
+        "defense": "UPDATE player_stats SET defense = ? WHERE id = ?",
+        "position": "UPDATE player_stats SET position = ? WHERE id = ?",
+    }
+    updates = {k: v for k, v in data.items() if k in _PATCHABLE}
     if not updates:
         return jsonify({"error": "No patchable fields provided"}), 400
 
-    set_clause = ", ".join(f"{k} = ?" for k in updates)
-    values     = list(updates.values()) + [stats_id]
     with db_conn() as conn:
-        conn.execute(f"UPDATE player_stats SET {set_clause} WHERE id = ?", values)
+        for col, val in updates.items():
+            conn.execute(_PATCHABLE[col], (val, stats_id))
         conn.commit()
     return jsonify({"ok": True})
 
