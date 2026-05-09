@@ -11,6 +11,11 @@ Usage:
 
 import sqlite3
 import argparse
+import os
+import sys
+
+# Ensure project root is on the path so db.py can be imported
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db import DB_PATH
 

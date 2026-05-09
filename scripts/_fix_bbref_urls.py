@@ -8,8 +8,9 @@ Special cases are handled manually below.
 import sqlite3
 import unicodedata
 import re
+import os
 
-DB_PATH = "nba.db"
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "nba.db")
 
 # Manual overrides for names that don't follow the standard formula or are ambiguous
 OVERRIDES = {

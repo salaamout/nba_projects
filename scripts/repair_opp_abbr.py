@@ -11,6 +11,12 @@ The fix is to:
 
 import time
 import logging
+import os
+import sys
+
+# Ensure project root is on the path so db.py and scraper.py can be imported
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from db import get_conn
 from scraper import _fetch_bbref_playoff_gamelog
 

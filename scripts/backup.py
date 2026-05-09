@@ -26,7 +26,7 @@ DB_FILE       = "nba.db"          # Local database file
 KEEP_BACKUPS  = 10                # How many timestamped backups to keep on Drive
 # ─────────────────────────────────────────────────────────────────────────────
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH  = os.path.join(BASE_DIR, DB_FILE)
 
 

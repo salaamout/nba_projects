@@ -7,9 +7,15 @@ Usage:
 import csv
 import re
 import sys
+import os
+
+# Ensure project root is on the path so db.py can be imported
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from db import get_conn, init_db
 
-CSV_PATH = "data_for_import/Playoff Game Watch Log - Sheet1.csv"
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CSV_PATH = os.path.join(_ROOT, "data_for_import", "Playoff Game Watch Log - Sheet1.csv")
 
 ROUND_MAP = {
     "1": "First Round",

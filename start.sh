@@ -24,7 +24,7 @@ echo "Installing dependencies..."
 
 # 3. Back up database to Google Drive (non-blocking — skips silently if not configured)
 echo "Running backup..."
-"$VENV_DIR/bin/python" backup.py 2>/dev/null && true
+"$VENV_DIR/bin/python" scripts/backup.py 2>/dev/null && true
 
 # 4. Start the app (db is initialised automatically inside app.py)
 echo "Starting app at http://127.0.0.1:5000"
