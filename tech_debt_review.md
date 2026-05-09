@@ -212,7 +212,7 @@ The appearance-fetch loop in both suggest endpoints runs `SELECT 1 FROM player_g
 ## 6. Error Handling & Robustness
 
 ### 6.1 `remove_selected` does not check whether the row exists
-**Severity: Low**
+**Severity: Low** (DONE)
 
 ```python
 @app.route("/api/selected/<int:selected_id>", methods=["DELETE"])
@@ -226,7 +226,7 @@ def remove_selected(selected_id):
 No 404 is returned when `selected_id` doesn't exist. Be consistent with `delete_season` which checks `rowcount`.
 
 ### 6.2 `patch_stats` uses f-string interpolation for SQL column names
-**Severity: Medium**
+**Severity: Medium** (DONE)
 
 ```python
 set_clause = ", ".join(f"{k} = ?" for k in updates)
@@ -236,12 +236,12 @@ conn.execute(f"UPDATE player_stats SET {set_clause} WHERE id = ?", values)
 While `allowed` whitelist mitigates injection risk, this pattern is fragile. Prefer explicit mapping to literal SQL strings.
 
 ### 6.3 `suggest_game` catches all exceptions with a bare `except Exception`
-**Severity: Low**
+**Severity: Low** (DONE)
 
 The broad try/except at the bottom of `suggest_game` and `suggest_game_for_player` swallows programming errors (e.g., `AttributeError`, `KeyError`) and makes debugging harder. Log at `ERROR` level (already done via `logger.exception`) and be as specific as possible about which exceptions are expected.
 
 ### 6.4 Scraper birthdate fetch silently swallows all exceptions
-**Severity: Low**
+**Severity: Low** (DONE)
 
 ```python
 try:
@@ -261,7 +261,8 @@ At minimum, log the exception so silent failures are visible.
 
 There are zero test files in the project. The following areas are highest priority for coverage:
 
-### 7.1 `kyle.py` — Pure logic, easy to test (DONE)
+### 7.1 `kyle.py` — Pure logic, easy to test
+(DONE)
 
 `kyle.py` has no I/O and contains the core rating algorithm. This should have near-100% coverage.
 
@@ -283,10 +284,7 @@ There are zero test files in the project. The following areas are highest priori
 | `test_least_squares_empty` | Empty comparisons → `{}` |
 
 ### 7.2 `db.py` — Schema and migrations
-
-```
-tests/test_db.py
-```
+(DONE)
 
 - `test_init_db_creates_tables` — verify all expected tables exist after `init_db()`
 - `test_init_db_idempotent` — calling `init_db()` twice does not raise or duplicate data
