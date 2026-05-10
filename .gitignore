@@ -6,7 +6,7 @@ __pycache__/
 nba.db
 *.db-shm
 *.db-wal
-server.log
+*.log
 .env
 .DS_Store
 instance/
