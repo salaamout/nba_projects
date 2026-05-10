@@ -126,6 +126,7 @@ def _find_co_appearance_games(conn, p1_id: int, p2_id: int,
         """
         SELECT a1.game_date, a1.season_year,
                a1.team_abbr AS team1_abbr, a2.team_abbr AS team2_abbr,
+               COALESCE(a1.round, a2.round) AS round,
                ROW_NUMBER() OVER (
                    PARTITION BY a1.season_year, a1.team_abbr, a1.opp_abbr
                    ORDER BY a1.game_date
@@ -154,6 +155,7 @@ def _find_co_appearance_games_in_years(conn, p1_id: int, p2_id: int,
         f"""
         SELECT a1.game_date, a1.season_year,
                a1.team_abbr AS team1_abbr, a2.team_abbr AS team2_abbr,
+               COALESCE(a1.round, a2.round) AS round,
                ROW_NUMBER() OVER (
                    PARTITION BY a1.season_year, a1.team_abbr, a1.opp_abbr
                    ORDER BY a1.game_date
@@ -292,8 +294,8 @@ def get_suggestions(conn, window: int, skip: int) -> dict:
                     "game_date":   game["game_date"],
                     "team1":       team1_variants[0] if team1_variants else game["team1_abbr"],
                     "team2":       team2_variants[0] if team2_variants else game["team2_abbr"],
-                    "round":       None,
-                    "round_known": False,
+                    "round":       game["round"],
+                    "round_known": game["round"] is not None,
                 },
             })
 
@@ -453,7 +455,8 @@ def get_suggestions_for_player(conn, player_id: int, window: int,
                     "game_date": game["game_date"],
                     "team1":     team1_variants[0] if team1_variants else game["team1_abbr"],
                     "team2":     team2_variants[0] if team2_variants else game["team2_abbr"],
-                    "round":     None,
+                    "round":     game["round"],
+                    "round_known": game["round"] is not None,
                 },
             })
 

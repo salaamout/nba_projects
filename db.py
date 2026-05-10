@@ -165,8 +165,20 @@ def init_db():
                 "ALTER TABLE players ADD COLUMN nba_id INTEGER",
             ],
         ),
-        # v2 — add new migrations here, e.g.:
-        # ("Short description", ["ALTER TABLE ..."]),
+        # v2 — round column + playoff_series_rounds table
+        (
+            "Add round to player_game_appearances; add playoff_series_rounds table",
+            [
+                "ALTER TABLE player_game_appearances ADD COLUMN round TEXT",
+                """CREATE TABLE IF NOT EXISTS playoff_series_rounds (
+                    season_year   INTEGER NOT NULL,
+                    team1_abbr    TEXT    NOT NULL,
+                    team2_abbr    TEXT    NOT NULL,
+                    round         TEXT    NOT NULL,
+                    PRIMARY KEY (season_year, team1_abbr, team2_abbr)
+                )""",
+            ],
+        ),
     ]
 
     current_version: int = cur.execute("PRAGMA user_version").fetchone()[0]

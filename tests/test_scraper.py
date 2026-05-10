@@ -20,6 +20,8 @@ from scraper import (
     abbr_to_team_name_variants,
     _to_nba_abbr,
     _get,
+    _normalize_bbref_round,
+    _hist_abbr_for_static,
 )
 
 
@@ -252,6 +254,68 @@ class TestBbrefToNbaAbbr(unittest.TestCase):
 
     def test_wsb_becomes_was(self):
         self.assertEqual(_to_nba_abbr("WSB"), "WAS")
+
+
+# ---------------------------------------------------------------------------
+# _normalize_bbref_round
+# ---------------------------------------------------------------------------
+
+class TestNormalizeBbrefRound(unittest.TestCase):
+    def test_nba_finals(self):
+        self.assertEqual(_normalize_bbref_round("NBA Finals"), "NBA Finals")
+
+    def test_finals_alone_maps_to_nba_finals(self):
+        self.assertEqual(_normalize_bbref_round("Finals"), "NBA Finals")
+
+    def test_conference_finals(self):
+        self.assertEqual(_normalize_bbref_round("Conference Finals"), "Conference Finals")
+
+    def test_division_finals_maps_to_conference_finals(self):
+        self.assertEqual(_normalize_bbref_round("Division Finals"), "Conference Finals")
+
+    def test_conference_semifinals(self):
+        self.assertEqual(_normalize_bbref_round("Conference Semifinals"), "Conference Semifinals")
+
+    def test_division_semifinals_maps_to_conference_semifinals(self):
+        self.assertEqual(_normalize_bbref_round("Division Semifinals"), "Conference Semifinals")
+
+    def test_first_round(self):
+        self.assertEqual(_normalize_bbref_round("First Round"), "First Round")
+
+    def test_quarterfinals_maps_to_first_round(self):
+        self.assertEqual(_normalize_bbref_round("Quarterfinals"), "First Round")
+
+    def test_strips_asterisk(self):
+        self.assertEqual(_normalize_bbref_round("NBA Finals*"), "NBA Finals")
+
+    def test_case_insensitive(self):
+        self.assertEqual(_normalize_bbref_round("DIVISION FINALS"), "Conference Finals")
+
+
+# ---------------------------------------------------------------------------
+# _hist_abbr_for_static
+# ---------------------------------------------------------------------------
+
+class TestHistAbbrForStatic(unittest.TestCase):
+    def test_bkn_2002_returns_njn(self):
+        self.assertEqual(_hist_abbr_for_static("BKN", 2002), "NJN")
+
+    def test_bkn_2013_returns_bkn(self):
+        # 2013 is after override window ends, so no override → pass-through
+        self.assertEqual(_hist_abbr_for_static("BKN", 2013), "BKN")
+
+    def test_nop_2008_returns_noh(self):
+        self.assertEqual(_hist_abbr_for_static("NOP", 2008), "NOH")
+
+    def test_cha_2002_returns_chh(self):
+        self.assertEqual(_hist_abbr_for_static("CHA", 2002), "CHH")
+
+    def test_cha_2014_returns_cha(self):
+        # 2014 is past the CHH window → no override
+        self.assertEqual(_hist_abbr_for_static("CHA", 2014), "CHA")
+
+    def test_no_override_passes_through(self):
+        self.assertEqual(_hist_abbr_for_static("LAL", 2005), "LAL")
 
 
 if __name__ == "__main__":

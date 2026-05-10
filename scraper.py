@@ -85,6 +85,115 @@ _BBREF_TO_NBA_ABBR: dict[str, str] = {
     "WSB": "WAS",  # Washington Bullets
 }
 
+# ---------------------------------------------------------------------------
+# Round label helpers
+# ---------------------------------------------------------------------------
+
+# nba_api SeriesStandings ROUND_NUM → display label
+_ROUND_NUM_TO_LABEL: dict[int, str] = {
+    1: "First Round",
+    2: "Conference Semifinals",
+    3: "Conference Finals",
+    4: "NBA Finals",
+}
+
+# Hardcoded series data for seasons where CommonPlayoffSeries doesn't encode rounds.
+# Abbreviations must match what player_game_appearances stores (nba_api game-log abbrs).
+_HARDCODED_SERIES_ROUNDS: dict[int, list[tuple[str, str, str]]] = {
+    2001: [
+        ("LAL", "PHI", "NBA Finals"),
+        ("PHI", "MIL", "Conference Finals"),
+        ("LAL", "SAS", "Conference Finals"),
+        ("MIL", "CHH", "Conference Semifinals"),
+        ("PHI", "TOR", "Conference Semifinals"),
+        ("LAL", "SAC", "Conference Semifinals"),
+        ("SAS", "DAL", "Conference Semifinals"),
+        ("CHH", "MIA", "First Round"),
+        ("MIL", "ORL", "First Round"),
+        ("PHI", "IND", "First Round"),
+        ("TOR", "NYK", "First Round"),
+        ("DAL", "UTA", "First Round"),
+        ("LAL", "POR", "First Round"),
+        ("SAC", "PHX", "First Round"),
+        ("SAS", "MIN", "First Round"),
+    ],
+    2000: [
+        ("LAL", "IND", "NBA Finals"),
+        ("IND", "NYK", "Conference Finals"),
+        ("LAL", "POR", "Conference Finals"),
+        ("IND", "PHI", "Conference Semifinals"),
+        ("NYK", "MIA", "Conference Semifinals"),
+        ("LAL", "PHX", "Conference Semifinals"),
+        ("POR", "UTA", "Conference Semifinals"),
+        ("IND", "MIL", "First Round"),
+        ("MIA", "DET", "First Round"),
+        ("NYK", "TOR", "First Round"),
+        ("PHI", "CHH", "First Round"),
+        ("LAL", "SAC", "First Round"),
+        ("PHX", "SAS", "First Round"),
+        ("POR", "MIN", "First Round"),
+        ("UTA", "SEA", "First Round"),
+    ],
+}
+
+# Maps nba_api *static* abbreviation → historical abbreviations used in game logs,
+# for franchises that relocated or renamed.  Only entries that DIFFER from static
+# are needed; each tuple is (start_year_inclusive, end_year_inclusive, hist_abbr).
+_NBA_STATIC_ABBR_TO_HIST: dict[str, list[tuple[int, int, str]]] = {
+    # New Jersey Nets → Brooklyn Nets (2013)
+    "BKN": [(2000, 2012, "NJN")],
+    # Seattle SuperSonics → Oklahoma City Thunder (2009)
+    "OKC": [(2000, 2008, "SEA")],
+    # Charlotte franchise (ID 1610612766): still in Charlotte as original Hornets (CHH)
+    # through 2002. Starting 2004-05 this ID = expansion Charlotte Bobcats (CHA) — correct.
+    "CHA": [(2000, 2002, "CHH")],
+    # New Orleans franchise (ID 1610612740, static = NOP):
+    #   2003-05 → New Orleans Hornets (NOH)
+    #   2006    → New Orleans/Oklahoma City Hornets (NOK, split year)
+    #   2007-12 → New Orleans Hornets (NOH)
+    #   2013+   → New Orleans Pelicans (NOP, no override needed)
+    "NOP": [
+        (2003, 2005, "NOH"),
+        (2006, 2006, "NOK"),
+        (2007, 2012, "NOH"),
+    ],
+    # Vancouver Grizzlies → Memphis Grizzlies (2002)
+    "MEM": [(1996, 2001, "VAN")],
+}
+
+
+def _hist_abbr_for_static(static_abbr: str, season_year: int) -> str:
+    """Return the historical game-log abbreviation for a given nba_api static abbr + year."""
+    overrides = _NBA_STATIC_ABBR_TO_HIST.get(static_abbr, [])
+    for start, end, hist in overrides:
+        if start <= season_year <= end:
+            return hist
+    return static_abbr
+
+# Normalize historical BBRef round header text to modern display labels.
+# Keys are substrings that appear in the header (case-insensitive); first match wins.
+_BBREF_ROUND_NORMALIZATIONS: list[tuple[str, str]] = [
+    ("nba finals",            "NBA Finals"),
+    ("conference finals",     "Conference Finals"),
+    ("division finals",       "Conference Finals"),
+    ("conference semifinals", "Conference Semifinals"),
+    ("division semifinals",   "Conference Semifinals"),
+    ("first round",           "First Round"),
+    ("quarterfinals",         "First Round"),
+    ("finals",                "NBA Finals"),   # catch-all — must come after more-specific rules
+]
+
+
+def _normalize_bbref_round(raw: str) -> str | None:
+    """Map a raw BBRef round header string to a normalized round label."""
+    cleaned = raw.replace("*", "").strip()
+    lower = cleaned.lower()
+    for fragment, label in _BBREF_ROUND_NORMALIZATIONS:
+        if fragment in lower:
+            return label
+    logger.warning("Unrecognized BBRef round header: %r", cleaned)
+    return cleaned or None
+
 
 def _to_nba_abbr(bbref_abbr: str) -> str:
     """Convert a bbref team abbreviation to its nba_api equivalent."""
@@ -346,7 +455,7 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
     rows = None
     for table_id in ("pgl_basic_playoffs", "player_game_log_post"):
         try:
-            rows = _parse_table(soup, table_id)
+            rows = _parse_table(soup, table_id, include_group_headers=True)
             break
         except ValueError:
             continue
@@ -357,7 +466,13 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
 
     cur = conn.cursor()
     dates: set[str] = set()
+    current_round: str | None = None
     for row in rows:
+        # Round separator sentinel from _parse_table
+        if "__round_header__" in row:
+            current_round = _normalize_bbref_round(row["__round_header__"])
+            continue
+
         # Newer BBRef pages use 'date_game'; older pages (pre-~2000) use 'date'
         date_str = (row.get("date_game") or row.get("date") or "").strip()
         if not date_str or date_str.lower() in ("", "date"):
@@ -388,15 +503,21 @@ def _fetch_bbref_playoff_gamelog(player_id: int, bbref_url: str, season_year: in
 
         cur.execute(
             "INSERT OR IGNORE INTO player_game_appearances "
-            "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date) VALUES (?,?,?,?,?,?)",
-            (player_id, season_year, "playoffs", team_abbr, opp_abbr, game_date),
+            "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date, round) VALUES (?,?,?,?,?,?,?)",
+            (player_id, season_year, "playoffs", team_abbr, opp_abbr, game_date, current_round),
         )
-        # Backfill opp_abbr for any existing row that was cached without it
+        # Backfill opp_abbr / round for any existing row cached without them
         if opp_abbr:
             cur.execute(
                 "UPDATE player_game_appearances SET opp_abbr=? "
                 "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND game_date=? AND opp_abbr IS NULL",
                 (opp_abbr, player_id, season_year, game_date),
+            )
+        if current_round:
+            cur.execute(
+                "UPDATE player_game_appearances SET round=? "
+                "WHERE player_id=? AND season_year=? AND season_type='playoffs' AND game_date=? AND round IS NULL",
+                (current_round, player_id, season_year, game_date),
             )
         dates.add(game_date)
 
@@ -422,6 +543,171 @@ def _nba_season_str(season_year: int) -> str:
 def _nba_season_type(season_type: str) -> str:
     """Convert internal 'regular'/'playoffs' to nba_api string."""
     return "Regular Season" if season_type == "regular" else "Playoffs"
+
+
+def _fetch_series_round_map(season_year: int, conn) -> dict[tuple[str, str], str]:
+    """
+    Return a dict mapping (team1_abbr, team2_abbr) → round_label for every
+    playoff series in *season_year* using nba_api SeriesStandings.
+
+    Results are cached in ``playoff_series_rounds``.  Both orderings of each
+    team pair are stored so lookups work regardless of which team is "home".
+    """
+    existing = conn.execute(
+        "SELECT team1_abbr, team2_abbr, round FROM playoff_series_rounds WHERE season_year=?",
+        (season_year,),
+    ).fetchall()
+    if existing:
+        return {(r["team1_abbr"], r["team2_abbr"]): r["round"] for r in existing}
+
+    if not _NBA_API_AVAILABLE:
+        logger.warning("nba_api not available — cannot fetch SeriesStandings for %s", season_year)
+        return {}
+
+    try:
+        from nba_api.stats.endpoints import commonplayoffseries as _commonplayoffseries
+        from nba_api.stats.static import teams as _nba_teams_static
+        logger.info("Fetching CommonPlayoffSeries for season=%s", season_year)
+        time.sleep(3)
+        df = None
+        for attempt in range(3):
+            try:
+                cs = _commonplayoffseries.CommonPlayoffSeries(
+                    season=_nba_season_str(season_year),
+                    league_id="00",
+                    timeout=60,
+                )
+                df = cs.playoff_series.get_data_frame()
+                break
+            except Exception as exc:
+                wait = 10 * (attempt + 1)
+                logger.warning(
+                    "CommonPlayoffSeries attempt %d failed for %s: %s — retrying in %ds",
+                    attempt + 1, season_year, exc, wait,
+                )
+                time.sleep(wait)
+        if df is None or df.empty:
+            logger.warning("CommonPlayoffSeries returned no data for %s", season_year)
+            return {}
+    except Exception as exc:
+        logger.warning("CommonPlayoffSeries fetch failed for %s: %s", season_year, exc)
+        return {}
+
+    # Build team_id → abbreviation from static data
+    team_id_to_abbr: dict[int, str] = {
+        t["id"]: t["abbreviation"] for t in _nba_teams_static.get_teams()
+    }
+
+    result: dict[tuple[str, str], str] = {}
+    cur = conn.cursor()
+    seen_series: set[str] = set()
+    old_format_detected = False
+    for _, row in df.iterrows():
+        series_id = str(row.get("SERIES_ID", ""))
+        if series_id in seen_series:
+            continue
+        seen_series.add(series_id)
+
+        # Modern format: SERIES_ID[7] encodes the round (1=First Round … 4=Finals).
+        # Pre-~2002 seasons use a flat sequential format where [7]='0' for all series;
+        # round info is not recoverable from the API for those years.
+        try:
+            round_num = int(series_id[7])
+        except (IndexError, ValueError):
+            round_num = 0
+
+        if round_num == 0:
+            old_format_detected = True
+            continue
+
+        label = _ROUND_NUM_TO_LABEL.get(round_num)
+        if not label:
+            continue
+
+        home_id    = int(row.get("HOME_TEAM_ID",    0) or 0)
+        visitor_id = int(row.get("VISITOR_TEAM_ID", 0) or 0)
+        t1_static = team_id_to_abbr.get(home_id,    "")
+        t2_static = team_id_to_abbr.get(visitor_id, "")
+        if not t1_static or not t2_static:
+            continue
+        # Translate from current static abbr → historical game-log abbr
+        t1 = _hist_abbr_for_static(t1_static, season_year)
+        t2 = _hist_abbr_for_static(t2_static, season_year)
+
+        for a, b in [(t1, t2), (t2, t1)]:
+            try:
+                cur.execute(
+                    "INSERT OR REPLACE INTO playoff_series_rounds "
+                    "(season_year, team1_abbr, team2_abbr, round) VALUES (?,?,?,?)",
+                    (season_year, a, b, label),
+                )
+            except Exception as exc:
+                logger.warning("Failed to upsert playoff_series_rounds: %s", exc)
+            result[(a, b)] = label
+
+    conn.commit()
+    logger.info("Cached %d series round entries for season=%s", len(result), season_year)
+
+    if old_format_detected and not result:
+        # Fall back to hardcoded data for seasons the API can't encode rounds for
+        hardcoded = _HARDCODED_SERIES_ROUNDS.get(season_year, [])
+        if hardcoded:
+            logger.info(
+                "Using hardcoded series round data for season=%s (%d series)",
+                season_year, len(hardcoded),
+            )
+            cur = conn.cursor()
+            for t1, t2, label in hardcoded:
+                for a, b in [(t1, t2), (t2, t1)]:
+                    try:
+                        cur.execute(
+                            "INSERT OR REPLACE INTO playoff_series_rounds "
+                            "(season_year, team1_abbr, team2_abbr, round) VALUES (?,?,?,?)",
+                            (season_year, a, b, label),
+                        )
+                    except Exception as exc:
+                        logger.warning("Failed to upsert hardcoded playoff_series_rounds: %s", exc)
+                    result[(a, b)] = label
+            conn.commit()
+            logger.info(
+                "Cached %d hardcoded series round entries for season=%s", len(result), season_year
+            )
+        else:
+            logger.warning(
+                "No round data available for season=%s (old API format, no hardcoded fallback)",
+                season_year,
+            )
+
+    return result
+
+
+def _apply_series_rounds_to_appearances(season_year: int, conn) -> None:
+    """
+    For every player_game_appearances row in *season_year* with round IS NULL,
+    look up the round from playoff_series_rounds and apply it.
+    """
+    conn.execute(
+        """
+        UPDATE player_game_appearances
+        SET round = (
+            SELECT psr.round FROM playoff_series_rounds psr
+            WHERE psr.season_year = player_game_appearances.season_year
+              AND (
+                (psr.team1_abbr = player_game_appearances.team_abbr
+                 AND psr.team2_abbr = player_game_appearances.opp_abbr)
+                OR
+                (psr.team2_abbr = player_game_appearances.team_abbr
+                 AND psr.team1_abbr = player_game_appearances.opp_abbr)
+              )
+        )
+        WHERE season_year = ?
+          AND season_type = 'playoffs'
+          AND round IS NULL
+          AND opp_abbr IS NOT NULL
+        """,
+        (season_year,),
+    )
+    conn.commit()
 
 
 def _get_nba_id_for_player(player_name: str, conn) -> int | None:
@@ -522,10 +808,15 @@ def _safe_float(val: str):
         return None
 
 
-def _parse_table(soup: BeautifulSoup, table_id: str) -> list[dict]:
+def _parse_table(soup: BeautifulSoup, table_id: str,
+                 include_group_headers: bool = False) -> list[dict]:
     """
     Return list-of-dicts for a bbref stats table (handles commented-out tables).
     Removes header rows that appear mid-table (where Rk == 'Rk').
+
+    If *include_group_headers* is True, rows that are round separator headers
+    inside the <tbody> are included as sentinel dicts of the form
+    ``{"__round_header__": "<round text>"}``.
     """
     soup = _uncomment_tables(soup)
     table = soup.find("table", {"id": table_id})
@@ -538,6 +829,10 @@ def _parse_table(soup: BeautifulSoup, table_id: str) -> list[dict]:
     rows = []
     for tr in table.select("tbody tr"):
         if "thead" in tr.get("class", []):
+            if include_group_headers:
+                raw = tr.get_text(strip=True)
+                if raw:
+                    rows.append({"__round_header__": raw})
             continue
         cells = tr.find_all(["td", "th"])
         if not cells:
@@ -851,6 +1146,11 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
                         (app["opp_abbr"], internal_id, season_year, season_type, app["game_date"]),
                     )
         conn.commit()
+
+        # If this was a playoffs fetch, populate round data from SeriesStandings
+        if season_type == "playoffs" and season_year >= 2000:
+            _fetch_series_round_map(season_year, conn)
+            _apply_series_rounds_to_appearances(season_year, conn)
 
         with _fetched_seasons_lock:
             _p_mode_cache[(season_year, season_type)] = result

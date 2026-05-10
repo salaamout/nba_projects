@@ -122,7 +122,7 @@ function renderSuggestContent(data) {
         <div class="suggest-game-info">
           <span class="suggest-game-label">Suggested game:</span>
           <strong>${gameInfo}</strong>
-          &bull; ${g.year}${g.game_date ? ` &bull; ${g.game_date}` : ""}
+          &bull; ${g.round_known ? g.round : g.year + " Playoffs"}${g.game_date ? ` &bull; ${g.game_date}` : ""}
         </div>
         <div class="suggest-pair-score">Pair score: ${fmt(data.pair_score)}</div>
         <div class="suggest-actions">

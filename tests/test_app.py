@@ -326,3 +326,101 @@ def test_delete_watched_game_success(client):
     # Confirm 404 on subsequent fetch
     get_resp = client.get(f"/api/watched_games/{game_id}")
     assert get_resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# suggest_game_for_player
+# ---------------------------------------------------------------------------
+
+def _seed_suggest_fixture(db_path: str) -> tuple[int, int]:
+    """Seed minimal data for suggest_game_for_player tests.
+
+    Seeds two players (focal + opponent) with playoff seasons and
+    player_game_appearances rows so the suggest service can find a candidate
+    game.  The focal player's appearance has round='First Round' so that
+    round_known is True in the response.
+
+    Returns (focal_player_id, opp_player_id).
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    # Seasons
+    cur = conn.execute(
+        "INSERT INTO seasons (label, season_year, season_type) VALUES ('2010 Playoffs', 2010, 'playoffs')"
+    )
+    season_id = cur.lastrowid
+
+    # Players
+    focal_id = conn.execute(
+        "INSERT INTO players (name) VALUES ('Focal Player')"
+    ).lastrowid
+    opp_id = conn.execute(
+        "INSERT INTO players (name) VALUES ('Opp Player')"
+    ).lastrowid
+
+    # player_stats (needed for compute_peak_windows)
+    for pid in (focal_id, opp_id):
+        conn.execute(
+            """
+            INSERT INTO player_stats
+                (player_id, season_id, minutes, usage_rate, true_shooting_pct,
+                 assist_rate, turnover_pct, on_court_rating, on_off_diff, bpm, defense)
+            VALUES (?, ?, 32.0, 25.0, 0.60, 20.0, 12.0, 5.0, 4.0, 3.0, 1.5)
+            """,
+            (pid, season_id),
+        )
+        conn.execute("INSERT INTO selected_players (player_id, season_id) VALUES (?, ?)", (pid, season_id))
+
+    # player_game_appearances — one shared game, focal on LAL vs BOS
+    for pid, team, opp_team in [
+        (focal_id, "LAL", "BOS"),
+        (opp_id,   "BOS", "LAL"),
+    ]:
+        conn.execute(
+            """
+            INSERT INTO player_game_appearances
+                (player_id, season_year, season_type, game_date, team_abbr, opp_abbr, round)
+            VALUES (?, 2010, 'playoffs', '2010-04-20', ?, ?, 'First Round')
+            """,
+            (pid, team, opp_team),
+        )
+
+    conn.commit()
+    conn.close()
+    return focal_id, opp_id
+
+
+def test_suggest_game_for_player_missing_param(client):
+    resp = client.get("/api/suggest_game_for_player")
+    assert resp.status_code == 400
+
+
+def test_suggest_game_for_player_not_found(client):
+    resp = client.get("/api/suggest_game_for_player?player_id=999999")
+    data = _json(resp)
+    assert data["result"] == "error"
+
+
+def test_suggest_game_for_player_round_known(client):
+    """When appearance data is pre-seeded with a known round, round_known should be True."""
+    from unittest.mock import patch as mock_patch
+
+    focal_id, _ = _seed_suggest_fixture(db_module.DB_PATH)
+
+    # Patch _ensure_appearances to be a no-op so the test doesn't hit the network
+    with mock_patch(
+        "services.suggest_service._ensure_appearances", return_value=False
+    ):
+        resp = client.get(
+            f"/api/suggest_game_for_player?player_id={focal_id}&window=1"
+        )
+
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["result"] == "found"
+    assert data["game"]["round"] == "First Round"
+    assert data["game"]["round_known"] is True
