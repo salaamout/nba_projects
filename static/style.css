@@ -742,3 +742,24 @@ a.player-link:hover {
   background: var(--accent-alt, #388bfd);
   color: #fff;
 }
+
+/* ── Peak Opponent Games section ──────────────────── */
+.peak-games-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.peak-games-controls label {
+  font-size: .9rem;
+  color: var(--muted, #8b949e);
+}
+.peak-games-controls select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #30363d);
+  background: var(--surface, #161b22);
+  color: var(--text, #e6edf3);
+  font-size: .9rem;
+}

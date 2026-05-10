@@ -12,7 +12,7 @@ import logging
 from datetime import date as _date
 
 import kyle
-from scraper import scrape_player_birthdate
+from scraper import abbr_to_team_name_variants, scrape_player_birthdate
 from services.watch_log_service import get_watch_kyle_by_player
 
 logger = logging.getLogger(__name__)
@@ -193,6 +193,219 @@ def get_player_history(conn, player_id: int) -> dict:
         })
 
     return {"player": player_dict, "seasons": seasons_out}
+
+
+def get_peak_opponent_games(conn, player_id: int, window: int) -> dict:
+    """Return playoff games for player_id that include at least one peak opponent.
+
+    Response shape::
+
+        {
+          "player_id": int,
+          "window": int,
+          "games": [
+            {
+              "game_year": int,
+              "game_date": str,
+              "team_abbr": str,
+              "opp_abbr": str,
+              "watched": bool,
+              "round": str | None,
+              "game_of_round": int | None,
+              "conference": str | None,
+              "best_player_id": int | None,
+              "best_player_name": str | None,
+              "peak_opponents": [{"player_id": int, "name": str, "peak_start": int, "peak_end": int}]
+            }
+          ],
+          "all_peak_opponents": [{"player_id": int, "name": str}]
+        }
+    """
+    from flask import abort
+
+    player = conn.execute("SELECT id FROM players WHERE id = ?", (player_id,)).fetchone()
+    if not player:
+        abort(404)
+
+    # 1. Compute peak windows for all selected players.
+    from services import kyle_service
+    peaks_list, _ = kyle_service.compute_peak_windows(conn, window)
+    # Build map: player_id -> (best_start_year, best_end_year)
+    peak_map = {
+        p["player_id"]: (p["best_start_year"], p["best_end_year"])
+        for p in peaks_list
+        if p["player_id"] != player_id
+    }
+
+    # 2. Fetch focal player's playoff appearances.
+    focal_rows = conn.execute(
+        """
+        SELECT season_year, game_date, team_abbr, opp_abbr
+        FROM player_game_appearances
+        WHERE player_id = ? AND season_type = 'playoffs'
+        ORDER BY season_year, game_date
+        """,
+        (player_id,),
+    ).fetchall()
+
+    if not focal_rows:
+        return {
+            "player_id": player_id,
+            "window": window,
+            "games": [],
+            "all_peak_opponents": [],
+        }
+
+    # 3. Batch query: find all other selected players appearing in the same
+    #    (season_year, game_date, team_abbr, opp_abbr) game as the focal player.
+    #    We must match on both teams to avoid false positives when multiple
+    #    games are played on the same date.
+    game_keys = list({(r["season_year"], r["game_date"], r["team_abbr"], r["opp_abbr"]) for r in focal_rows})
+
+    # Build OR clause matching the exact game by teams (either side of the matchup).
+    if game_keys:
+        or_clauses = " OR ".join(
+            """(pga.season_year = ? AND pga.game_date = ?
+                AND ((pga.team_abbr = ? AND pga.opp_abbr = ?)
+                  OR (pga.team_abbr = ? AND pga.opp_abbr = ?)))"""
+            for _ in game_keys
+        )
+        params: list = [player_id]
+        for sy, gd, ta, oa in game_keys:
+            params += [sy, gd, ta, oa, oa, ta]
+
+        other_appearances = conn.execute(
+            f"""
+            SELECT DISTINCT pga.player_id, p.name, pga.season_year, pga.game_date,
+                            pga.team_abbr, pga.opp_abbr
+            FROM player_game_appearances pga
+            JOIN players p ON p.id = pga.player_id
+            WHERE pga.season_type = 'playoffs'
+              AND pga.player_id != ?
+              AND ({or_clauses})
+            """,
+            params,
+        ).fetchall()
+    else:
+        other_appearances = []
+
+    # Group by (season_year, game_date, team_abbr, opp_abbr) normalized so
+    # both sides of the matchup map to the same key as the focal player's rows.
+    from collections import defaultdict
+    game_opponents: dict[tuple, list[dict]] = defaultdict(list)
+    for row in other_appearances:
+        pid = row["player_id"]
+        if pid not in peak_map:
+            continue
+        year = row["season_year"]
+        start, end = peak_map[pid]
+        if start <= year <= end:
+            # Normalise the key to match what focal_rows uses: (year, date, team, opp)
+            # The focal row's team_abbr/opp_abbr may be either orientation.
+            ta, oa = row["team_abbr"], row["opp_abbr"]
+            # Add under both orientations so the lookup below always hits.
+            game_opponents[(year, row["game_date"], ta, oa)].append({
+                "player_id": pid,
+                "name": row["name"],
+                "peak_start": start,
+                "peak_end": end,
+            })
+            game_opponents[(year, row["game_date"], oa, ta)].append({
+                "player_id": pid,
+                "name": row["name"],
+                "peak_start": start,
+                "peak_end": end,
+            })
+
+    def _dedup_opps(opps: list[dict]) -> list[dict]:
+        seen: dict[int, dict] = {}
+        for o in opps:
+            seen.setdefault(o["player_id"], o)
+        return list(seen.values())
+
+    # 4. Filter focal games to those with at least one peak opponent.
+    qualifying = [
+        r for r in focal_rows
+        if game_opponents[(r["season_year"], r["game_date"], r["team_abbr"], r["opp_abbr"])]
+    ]
+
+    if not qualifying:
+        return {
+            "player_id": player_id,
+            "window": window,
+            "games": [],
+            "all_peak_opponents": [],
+        }
+
+    # 5. Left-join to watched_playoff_games for each qualifying game.
+    # Pre-compute game_of_round by ranking each focal game within its series.
+    series_game_count: dict[tuple, int] = defaultdict(int)
+
+    games_out = []
+    for row in qualifying:
+        sy = row["season_year"]
+        ta = row["team_abbr"]
+        oa = row["opp_abbr"]
+        series_key = (sy, ta, oa)
+        series_game_count[series_key] += 1
+        game_of_round = series_game_count[series_key]
+
+        ta_variants = abbr_to_team_name_variants(ta, sy)
+        oa_variants = abbr_to_team_name_variants(oa, sy)
+        t1_ph = ",".join("?" * len(ta_variants))
+        t2_ph = ",".join("?" * len(oa_variants))
+
+        watched_row = conn.execute(
+            f"""
+            SELECT w.id, w.round, w.game_of_round, w.conference,
+                   w.best_player_id, p.name AS best_player_name
+            FROM watched_playoff_games w
+            LEFT JOIN players p ON p.id = w.best_player_id
+            WHERE w.game_year = ?
+              AND w.game_of_round = ?
+              AND (
+                    (w.home_team IN ({t1_ph}) AND w.away_team IN ({t2_ph}))
+                 OR (w.home_team IN ({t2_ph}) AND w.away_team IN ({t1_ph}))
+              )
+            LIMIT 1
+            """,
+            [sy, game_of_round,
+             *ta_variants, *oa_variants,
+             *oa_variants, *ta_variants],
+        ).fetchone()
+
+        peak_opps = _dedup_opps(game_opponents[(sy, row["game_date"], ta, oa)])
+
+        games_out.append({
+            "game_year":        sy,
+            "game_date":        row["game_date"],
+            "team_abbr":        ta,
+            "opp_abbr":         oa,
+            "watched":          watched_row is not None,
+            "round":            watched_row["round"]            if watched_row else None,
+            "game_of_round":    watched_row["game_of_round"]    if watched_row else None,
+            "conference":       watched_row["conference"]       if watched_row else None,
+            "best_player_id":   watched_row["best_player_id"]  if watched_row else None,
+            "best_player_name": watched_row["best_player_name"] if watched_row else None,
+            "peak_opponents":   peak_opps,
+        })
+
+    # 6. Build de-duplicated all_peak_opponents list.
+    seen_opp: dict[int, str] = {}
+    for g in games_out:
+        for op in g["peak_opponents"]:
+            seen_opp[op["player_id"]] = op["name"]
+    all_peak_opponents = sorted(
+        [{"player_id": pid, "name": name} for pid, name in seen_opp.items()],
+        key=lambda x: x["name"],
+    )
+
+    return {
+        "player_id": player_id,
+        "window": window,
+        "games": games_out,
+        "all_peak_opponents": all_peak_opponents,
+    }
 
 
 def get_player_watch_log(conn, player_id: int) -> dict:

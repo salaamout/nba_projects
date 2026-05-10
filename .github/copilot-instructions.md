@@ -8,6 +8,11 @@
 - If the `.venv` directory is missing for some reason, run `bash start.sh` once to create it, then use `.venv/bin/python`.
 - Similarly, use `.venv/bin/pip` for any `pip` commands, not bare `pip`.
 
+## Localhost vs 127.0.0.1
+
+- **Always use `http://127.0.0.1:5000`** for any `curl` or HTTP commands targeting the local Flask server. Never use `http://localhost:5000`.
+- On macOS, `localhost` resolves to `::1` (IPv6) first, which hits the macOS AirPlay Receiver on port 5000 and returns a 403 — not Flask.
+
 ## Tool Preferences
 
 - **Never use MCP server tools** (e.g. `mcp_pylance_*`). Always prefer transparent, readable alternatives:

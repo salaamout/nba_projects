@@ -424,3 +424,141 @@ def test_suggest_game_for_player_round_known(client):
     assert data["result"] == "found"
     assert data["game"]["round"] == "First Round"
     assert data["game"]["round_known"] is True
+
+
+# ---------------------------------------------------------------------------
+# peak-games endpoint
+# ---------------------------------------------------------------------------
+
+def _seed_peak_games_fixture(db_path: str):
+    """Seed two players, one playoff season, and game appearances for peak-games tests.
+
+    Returns (focal_id, opp_id).
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    season_id = conn.execute(
+        "INSERT INTO seasons (label, season_year, season_type) VALUES ('1992 Playoffs', 1992, 'playoffs')"
+    ).lastrowid
+
+    focal_id = conn.execute("INSERT INTO players (name) VALUES ('Focal Player')").lastrowid
+    opp_id   = conn.execute("INSERT INTO players (name) VALUES ('Peak Opp')").lastrowid
+
+    for pid in (focal_id, opp_id):
+        conn.execute(
+            """
+            INSERT INTO player_stats
+                (player_id, season_id, minutes, usage_rate, true_shooting_pct,
+                 assist_rate, turnover_pct, on_court_rating, on_off_diff, bpm, defense)
+            VALUES (?, ?, 32.0, 25.0, 0.60, 20.0, 12.0, 5.0, 4.0, 3.0, 1.5)
+            """,
+            (pid, season_id),
+        )
+        conn.execute(
+            "INSERT INTO selected_players (player_id, season_id) VALUES (?, ?)",
+            (pid, season_id),
+        )
+
+    # Shared game on 1992-06-03
+    for pid, team, opp_team in [(focal_id, "CHI", "POR"), (opp_id, "POR", "CHI")]:
+        conn.execute(
+            """
+            INSERT INTO player_game_appearances
+                (player_id, season_year, season_type, game_date, team_abbr, opp_abbr, round)
+            VALUES (?, 1992, 'playoffs', '1992-06-03', ?, ?, 'NBA Finals')
+            """,
+            (pid, team, opp_team),
+        )
+
+    # Game that only the focal player appears in (no peak opponent)
+    conn.execute(
+        """
+        INSERT INTO player_game_appearances
+            (player_id, season_year, season_type, game_date, team_abbr, opp_abbr, round)
+        VALUES (?, 1992, 'playoffs', '1992-05-10', 'CHI', 'MIL', 'Second Round')
+        """,
+        (focal_id,),
+    )
+
+    conn.commit()
+    conn.close()
+    return focal_id, opp_id
+
+
+def test_peak_games_no_player(client):
+    resp = client.get("/api/player/999999/peak-games")
+    assert resp.status_code == 404
+
+
+def test_peak_games_no_data(client):
+    """Player with no appearances returns empty games list."""
+    import sqlite3
+    conn = sqlite3.connect(db_module.DB_PATH)
+    pid = conn.execute("INSERT INTO players (name) VALUES ('Empty')", ).lastrowid
+    conn.commit()
+    conn.close()
+
+    resp = client.get(f"/api/player/{pid}/peak-games?window=3")
+    assert resp.status_code == 200
+    data = _json(resp)
+    assert data["games"] == []
+    assert data["all_peak_opponents"] == []
+
+
+def test_peak_games_basic(client):
+    """Games with a peak opponent appear; games without do not."""
+    focal_id, opp_id = _seed_peak_games_fixture(db_module.DB_PATH)
+
+    resp = client.get(f"/api/player/{focal_id}/peak-games?window=1")
+    assert resp.status_code == 200
+    data = _json(resp)
+
+    assert data["player_id"] == focal_id
+    assert len(data["games"]) == 1
+    game = data["games"][0]
+    assert game["game_date"] == "1992-06-03"
+    assert any(o["player_id"] == opp_id for o in game["peak_opponents"])
+
+    # all_peak_opponents should contain opp
+    opp_ids = [o["player_id"] for o in data["all_peak_opponents"]]
+    assert opp_id in opp_ids
+
+
+def test_peak_games_watched(client):
+    """watched=True when a matching watched_playoff_games row exists."""
+    import sqlite3
+    focal_id, _ = _seed_peak_games_fixture(db_module.DB_PATH)
+
+    conn = sqlite3.connect(db_module.DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(
+        """
+        INSERT INTO watched_playoff_games
+            (home_team, away_team, game_year, round, game_of_round, conference, date_watched)
+        VALUES ('CHI', 'POR', 1992, 'NBA Finals', 1, 'NBA Finals', '2024-01-01')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    resp = client.get(f"/api/player/{focal_id}/peak-games?window=1")
+    data = _json(resp)
+    assert len(data["games"]) == 1
+    assert data["games"][0]["watched"] is True
+    assert data["games"][0]["round"] == "NBA Finals"
+
+
+def test_peak_games_window(client):
+    """Changing window to 17 may yield different (or no) qualifying opponents."""
+    focal_id, _ = _seed_peak_games_fixture(db_module.DB_PATH)
+
+    resp = client.get(f"/api/player/{focal_id}/peak-games?window=17")
+    assert resp.status_code == 200
+    data = _json(resp)
+    # With window=17 the single season (1992) cannot form a 17-year window, so
+    # compute_peak_windows returns no peaks → no qualifying games.
+    assert data["games"] == []

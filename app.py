@@ -7,7 +7,7 @@ from flask import Flask, jsonify, request, render_template, abort
 from werkzeug.exceptions import HTTPException
 
 from db import init_db, db_conn
-from scraper import run_scrape
+from scraper import run_scrape, _fetched_seasons, _fetched_seasons_lock, _is_active_season, _fetch_league_game_log_nba
 import kyle
 import services.kyle_service    as kyle_service
 import services.watch_log_service as watch_log_service
@@ -475,6 +475,16 @@ def player_watch_log(player_id):
     return jsonify(result)
 
 
+@app.route("/api/player/<int:player_id>/peak-games")
+def player_peak_games(player_id):
+    """Playoff games for a player that include at least one peak opponent."""
+    window = request.args.get("window", 3, type=int)
+    window = max(1, min(window, 17))
+    with db_conn() as conn:
+        data = player_service.get_peak_opponent_games(conn, player_id, window)
+    return jsonify(data)
+
+
 # ---------------------------------------------------------------------------
 # Watch Log
 # ---------------------------------------------------------------------------
@@ -650,6 +660,49 @@ def best_player_leaderboard():
     with db_conn() as conn:
         result = watch_log_service.compute_leaderboard(conn)
     return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# Admin routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/refresh-active-season", methods=["POST"])
+def refresh_active_season():
+    """Force an immediate re-fetch of the current active playoffs.
+
+    Deletes the fetch-log rows for the current year's playoffs, clears the
+    in-memory cache, then immediately re-fetches from the NBA API so the
+    response contains the latest games.
+    """
+    from datetime import date as _date
+    today = _date.today()
+    season_year = today.year
+
+    if not _is_active_season(season_year, "playoffs"):
+        return jsonify({"ok": False, "message": "No active playoffs season detected."}), 400
+
+    with db_conn() as conn:
+        conn.execute(
+            "DELETE FROM league_game_log_fetch_log "
+            "WHERE season_year=? AND season_type='playoffs'",
+            (season_year,),
+        )
+        conn.commit()
+
+    keys_to_remove = {
+        (season_year, "playoffs", "T"),
+        (season_year, "playoffs", "P"),
+    }
+    with _fetched_seasons_lock:
+        _fetched_seasons.difference_update(keys_to_remove)
+
+    # Immediately re-fetch so new games are in the DB before we return.
+    with db_conn() as conn:
+        _fetch_league_game_log_nba(season_year, "playoffs", "T", conn)
+        _fetch_league_game_log_nba(season_year, "playoffs", "P", conn)
+
+    logger.info("Admin: refreshed active-season game appearances for %s playoffs", season_year)
+    return jsonify({"ok": True, "season_year": season_year, "message": "Active season data refreshed."})
 
 
 # ---------------------------------------------------------------------------

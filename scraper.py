@@ -19,7 +19,7 @@ import time
 import logging
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, date
 
 import requests
 from bs4 import BeautifulSoup, Comment
@@ -62,6 +62,18 @@ except ImportError:
 # stats.nba.com in the current process so we only call the API once per season.
 _fetched_seasons: set[tuple[int, str, str]] = set()  # (year, season_type, "T"|"P")
 _fetched_seasons_lock = threading.Lock()
+
+# How long (in hours) to honour the fetch-log cache for an *active* playoffs season.
+ACTIVE_SEASON_TTL_HOURS = 4
+
+
+def _is_active_season(season_year: int, season_type: str) -> bool:
+    """Return True if this season is currently in progress (i.e. live playoffs)."""
+    if season_type != "playoffs":
+        return False
+    today = date.today()
+    # NBA playoffs run April–June; season_year matches the calendar year of the Finals.
+    return season_year == today.year and today.month in range(4, 8)
 
 # In-memory cache for P-mode results: (season_year, season_type) → dict[nba_player_id → list[dict]]
 _p_mode_cache: dict[tuple[int, str], dict[int, list[dict]]] = {}
@@ -1017,16 +1029,34 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
     # DB-level cache check (survives server restarts): see if this
     # season/type/mode combination was already fully fetched before.
     already_logged = conn.execute(
-        "SELECT 1 FROM league_game_log_fetch_log "
+        "SELECT fetched_at FROM league_game_log_fetch_log "
         "WHERE season_year=? AND season_type=? AND player_or_team=?",
         (season_year, season_type, player_or_team),
     ).fetchone()
     if already_logged:
-        with _fetched_seasons_lock:
-            _fetched_seasons.add(cache_key)
+        if _is_active_season(season_year, season_type):
+            # For an active playoffs season, only honour the cache if it is fresh enough.
+            fetched_at = datetime.fromisoformat(already_logged["fetched_at"])
+            age_hours = (datetime.utcnow() - fetched_at).total_seconds() / 3600
+            if age_hours < ACTIVE_SEASON_TTL_HOURS:
+                # Still fresh — use the cached result
+                with _fetched_seasons_lock:
+                    _fetched_seasons.add(cache_key)
+                if player_or_team == "P":
+                    return _p_mode_cache.get((season_year, season_type), {})
+                return {}
+            logger.info(
+                "Active season cache stale (%.1fh old), re-fetching %s %s mode=%s…",
+                age_hours, season_year, season_type, player_or_team,
+            )
+            # Fall through to re-fetch
+        else:
+            # Historical season — cache is permanent
+            with _fetched_seasons_lock:
+                _fetched_seasons.add(cache_key)
             if player_or_team == "P":
                 return _p_mode_cache.get((season_year, season_type), {})
-        return {}
+            return {}
 
     # stats.nba.com LeagueGameLog is unreliable for seasons before 2000 —
     # the endpoint consistently returns an empty body for old data.
@@ -1078,8 +1108,11 @@ def _fetch_league_game_log_nba(season_year: int, season_type: str, player_or_tea
                         _p_mode_cache[(season_year, season_type)] = {}
                     return {}
                 return {}
-    with _fetched_seasons_lock:
-        _fetched_seasons.add(cache_key)
+    # Only seal the in-memory cache for historical seasons; active seasons must
+    # remain re-checkable so the TTL logic can re-fetch once the cache goes stale.
+    if not _is_active_season(season_year, season_type):
+        with _fetched_seasons_lock:
+            _fetched_seasons.add(cache_key)
     _record_league_game_log_fetch(season_year, season_type, player_or_team, conn)
 
     if df.empty:
@@ -1232,10 +1265,11 @@ def _get_team_margins(team_abbr: str, season_year: int, season_type: str, conn) 
         "WHERE team_abbr=? AND season_year=? AND season_type=?",
         (team_abbr, season_year, season_type),
     ).fetchall()
-    if existing:
+    if existing and not _is_active_season(season_year, season_type):
         return {row["game_date"]: row["margin"] for row in existing}
 
-    # Fetch the full league-wide team log (covers all teams)
+    # Fetch the full league-wide team log (covers all teams).
+    # For active seasons this will re-fetch if the TTL has expired.
     _fetch_league_game_log_nba(season_year, season_type, "T", conn)
 
     existing = conn.execute(
@@ -1264,33 +1298,40 @@ def _get_player_appearances(
         "WHERE player_id=? AND season_year=? AND season_type=?",
         (player_id, season_year, season_type),
     ).fetchall()
-    if cached:
+    if cached and not _is_active_season(season_year, season_type):
         return {r["game_date"] for r in cached}
 
     if nba_id is None:
         logger.warning("No nba_id for player '%s' — cannot fetch appearances from nba_api", player_name)
-        return set()
+        # For active seasons with cached rows but no nba_id, return what we have
+        return {r["game_date"] for r in cached}
 
-    # Fetch full season P-mode (all players in one call)
+    # Fetch full season P-mode (all players in one call).
+    # For active seasons this will re-fetch if the TTL has expired; for
+    # historical seasons it returns immediately from the in-memory cache.
     p_data = _fetch_league_game_log_nba(season_year, season_type, "P", conn)
 
-    if not p_data:
-        # Already fetched this run but no data
-        return set()
+    # Upsert any appearances not yet in the DB (covers players whose internal
+    # record was created after the bulk fetch ran, or a first-ever fetch).
+    player_apps = p_data.get(nba_id, []) if p_data else []
+    if player_apps:
+        cur = conn.cursor()
+        for app in player_apps:
+            cur.execute(
+                "INSERT OR IGNORE INTO player_game_appearances "
+                "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date) VALUES (?,?,?,?,?,?)",
+                (player_id, season_year, season_type, app["team_abbr"], app.get("opp_abbr") or None, app["game_date"]),
+            )
+        conn.commit()
 
-    player_apps = p_data.get(nba_id, [])
-
-    # Upsert this player's appearances now that we know their internal_id
-    cur = conn.cursor()
-    for app in player_apps:
-        cur.execute(
-            "INSERT OR IGNORE INTO player_game_appearances "
-            "(player_id, season_year, season_type, team_abbr, opp_abbr, game_date) VALUES (?,?,?,?,?,?)",
-            (player_id, season_year, season_type, app["team_abbr"], app.get("opp_abbr") or None, app["game_date"]),
-        )
-    conn.commit()
-
-    return {a["game_date"] for a in player_apps}
+    # Always re-query the DB so we return the freshest data (including any rows
+    # inserted by the bulk fetch above, or rows already present from a prior run).
+    fresh = conn.execute(
+        "SELECT game_date FROM player_game_appearances "
+        "WHERE player_id=? AND season_year=? AND season_type=?",
+        (player_id, season_year, season_type),
+    ).fetchall()
+    return {r["game_date"] for r in fresh}
 
 
 def _get_player_team_stints(advanced_rows_for_player: list[dict]) -> list[str]:
@@ -1516,6 +1557,15 @@ def run_scrape(season_id: int):
         inserted += 1
 
     conn.commit()
+    logger.info("Upserted %d player rows for season_id=%s", inserted, season_id)
+
+    # For active playoffs seasons, also refresh game appearances from the NBA API
+    # so that new games (G3, G4, …) are picked up each time the user hits Update.
+    if _is_active_season(year, season_type):
+        logger.info("Active playoffs season — refreshing game appearances from stats.nba.com")
+        _fetch_league_game_log_nba(year, season_type, "T", conn)
+        _fetch_league_game_log_nba(year, season_type, "P", conn)
+
     conn.close()
     logger.info("Upserted %d player rows for season_id=%s", inserted, season_id)
     return inserted

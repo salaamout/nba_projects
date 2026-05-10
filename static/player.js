@@ -2,6 +2,10 @@
 let playerSuggestSkip   = 0;
 let playerSuggestWindow = 3;
 
+/* Peak Games state */
+let _peakGamesData   = null;
+let _peakGamesWindow = 3;
+
 document.addEventListener("DOMContentLoaded", async () => {
   const playerId = getPlayerIdFromUrl();
   if (!playerId) {
@@ -31,6 +35,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("player-suggest-dismiss").addEventListener("click", () => {
     document.getElementById("player-suggest-card").classList.add("hidden");
     playerSuggestSkip = 0;
+  });
+
+  // Peak games controls
+  document.getElementById("peak-games-window").addEventListener("change", (e) => {
+    const pid = getPlayerIdFromUrl();
+    _peakGamesWindow = parseInt(e.target.value, 10);
+    loadPeakGames(pid, _peakGamesWindow);
+  });
+
+  document.getElementById("peak-games-opponent").addEventListener("change", (e) => {
+    renderPeakGames(e.target.value);
   });
 });
 
@@ -90,6 +105,9 @@ function renderProfile(data) {
 
   if (regular.length)  document.getElementById("section-regular").classList.remove("hidden");
   if (playoffs.length) document.getElementById("section-playoffs").classList.remove("hidden");
+
+  // Load peak opponent games section
+  loadPeakGames(player.id, _peakGamesWindow);
 }
 
 /* ── Table 1: Summary ──────────────────────────────────────────── */
@@ -412,3 +430,126 @@ function wlTd(tr, text) {
   tr.appendChild(td);
   return td;
 }
+
+/* ── Peak Opponent Games ───────────────────────────────────────── */
+async function loadPeakGames(playerId, window) {
+  _peakGamesWindow = window;
+  try {
+    const data = await apiFetch(`/api/player/${playerId}/peak-games?window=${window}`);
+    _peakGamesData = data;
+    // Reset opponent filter when window changes
+    const oppSel = document.getElementById("peak-games-opponent");
+    oppSel.innerHTML = '<option value="">All</option>';
+    renderPeakGames("");
+  } catch (e) {
+    // silently ignore — section stays hidden
+  }
+}
+
+function renderPeakGames(opponentFilter) {
+  if (!_peakGamesData) return;
+
+  const section    = document.getElementById("section-peak-games");
+  const emptyMsg   = document.getElementById("peak-games-empty");
+  const tableWrap  = document.getElementById("peak-games-table-wrap");
+  const tbody      = document.getElementById("peak-games-body");
+  const oppSel     = document.getElementById("peak-games-opponent");
+
+  // Populate opponent dropdown (idempotent — only adds if not already present)
+  const existingIds = new Set(
+    [...oppSel.options].map(o => o.value).filter(v => v !== "")
+  );
+  for (const opp of (_peakGamesData.all_peak_opponents || [])) {
+    if (!existingIds.has(String(opp.player_id))) {
+      const opt = document.createElement("option");
+      opt.value = opp.player_id;
+      opt.textContent = opp.name;
+      oppSel.appendChild(opt);
+    }
+  }
+
+  // Filter rows
+  const oppId = opponentFilter ? parseInt(opponentFilter, 10) : null;
+  const rows = (_peakGamesData.games || []).filter(g => {
+    if (!oppId) return true;
+    return g.peak_opponents.some(o => o.player_id === oppId);
+  });
+
+  tbody.innerHTML = "";
+  if (!rows.length) {
+    emptyMsg.classList.remove("hidden");
+    tableWrap.classList.add("hidden");
+  } else {
+    emptyMsg.classList.add("hidden");
+    tableWrap.classList.remove("hidden");
+    for (const g of rows) {
+      const tr = document.createElement("tr");
+
+      // Year
+      wlTd(tr, g.game_year);
+
+      // Date formatted MMM D
+      const dateStr = g.game_date ? fmtGameDate(g.game_date) : "—";
+      wlTd(tr, dateStr);
+
+      // Matchup
+      wlTd(tr, `${g.team_abbr} vs ${g.opp_abbr}`);
+
+      // Round
+      wlTd(tr, g.round ?? "—");
+
+      // Game #
+      wlTd(tr, g.game_of_round != null ? `G${g.game_of_round}` : "—");
+
+      // Watched badge
+      const watchedTd = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.textContent = g.watched ? "✅" : "⬜";
+      badge.title = g.watched ? "Watched" : "Not watched";
+      watchedTd.appendChild(badge);
+      tr.appendChild(watchedTd);
+
+      // Best player
+      if (g.watched && g.best_player_id) {
+        const bpTd = document.createElement("td");
+        const a = document.createElement("a");
+        a.href = `/player/${g.best_player_id}`;
+        a.className = "player-link";
+        a.textContent = g.best_player_name || "—";
+        bpTd.appendChild(a);
+        tr.appendChild(bpTd);
+      } else {
+        wlTd(tr, "—");
+      }
+
+      // Peak opponents (comma-separated, linked)
+      const oppTd = document.createElement("td");
+      g.peak_opponents.forEach((op, idx) => {
+        const a = document.createElement("a");
+        a.href = `/player/${op.player_id}`;
+        a.className = "player-link";
+        a.textContent = op.name;
+        a.title = `Peak: ${op.peak_start}–${op.peak_end}`;
+        oppTd.appendChild(a);
+        if (idx < g.peak_opponents.length - 1) {
+          oppTd.appendChild(document.createTextNode(", "));
+        }
+      });
+      tr.appendChild(oppTd);
+
+      tbody.appendChild(tr);
+    }
+  }
+
+  section.classList.remove("hidden");
+}
+
+function fmtGameDate(dateStr) {
+  try {
+    const d = new Date(dateStr + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  } catch (_) {
+    return dateStr;
+  }
+}
+

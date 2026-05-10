@@ -178,6 +178,61 @@
       </div>
     </section>
 
+    <!-- Peak Opponent Games section -->
+    <section class="profile-section hidden" id="section-peak-games">
+      <h3 class="section-title">Games vs. Peak Opponents</h3>
+
+      <div class="peak-games-controls">
+        <label for="peak-games-window">Peak window:</label>
+        <select id="peak-games-window">
+          <option value="1">1 Year</option>
+          <option value="2">2 Years</option>
+          <option value="3" selected>3 Years</option>
+          <option value="4">4 Years</option>
+          <option value="5">5 Years</option>
+          <option value="6">6 Years</option>
+          <option value="7">7 Years</option>
+          <option value="8">8 Years</option>
+          <option value="9">9 Years</option>
+          <option value="10">10 Years</option>
+          <option value="11">11 Years</option>
+          <option value="12">12 Years</option>
+          <option value="13">13 Years</option>
+          <option value="14">14 Years</option>
+          <option value="15">15 Years</option>
+          <option value="16">16 Years</option>
+          <option value="17">17 Years</option>
+        </select>
+
+        <label for="peak-games-opponent">Opponent:</label>
+        <select id="peak-games-opponent">
+          <option value="">All</option>
+        </select>
+      </div>
+
+      <p id="peak-games-empty" class="empty-msg hidden">
+        No playoff games found against peak opponents for this window.
+      </p>
+
+      <div class="table-wrap" id="peak-games-table-wrap">
+        <table class="profile-table" id="peak-games-table">
+          <thead>
+            <tr>
+              <th>Year</th>
+              <th>Date</th>
+              <th>Matchup</th>
+              <th>Round</th>
+              <th>Game #</th>
+              <th>Watched</th>
+              <th>Best Player</th>
+              <th>Peak Opponents</th>
+            </tr>
+          </thead>
+          <tbody id="peak-games-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <p id="empty-msg" class="empty-msg hidden">No stats found for this player.</p>
   </main>
 
