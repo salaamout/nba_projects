@@ -562,3 +562,263 @@ def test_peak_games_window(client):
     # With window=17 the single season (1992) cannot form a 17-year window, so
     # compute_peak_windows returns no peaks → no qualifying games.
     assert data["games"] == []
+
+
+# ---------------------------------------------------------------------------
+# Regression: player history playoff K.Y.L.E. must match compute_peak_windows
+# ---------------------------------------------------------------------------
+
+def _seed_playoff_kyle_fixture(db_path):
+    """
+    Seed two players + a playoff season with watched games so that
+    watch_kyle is year-normalised (relative to the other selected player).
+    Returns (focal_player_id, other_player_id, season_year).
+    """
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    # Players
+    focal_id = conn.execute("INSERT INTO players (name) VALUES ('Focal Player')").lastrowid
+    other_id = conn.execute("INSERT INTO players (name) VALUES ('Other Player')").lastrowid
+
+    # Playoff season
+    season_year = 2023
+    season_id = conn.execute(
+        "INSERT INTO seasons (label, season_year, season_type) VALUES (?, ?, 'playoffs')",
+        (f"{season_year} Playoffs", season_year),
+    ).lastrowid
+
+    # Stats — both players need full stats so kyle_rating can be computed
+    for pid in (focal_id, other_id):
+        conn.execute(
+            """
+            INSERT INTO player_stats
+                (player_id, season_id, minutes, usage_rate, true_shooting_pct,
+                 assist_rate, turnover_pct, on_court_rating, on_off_diff, bpm, defense,
+                 playoff_games)
+            VALUES (?, ?, 32.0, 25.0, 0.60, 20.0, 12.0, 3.0, 4.0, 2.0, 1.5, 10)
+            """,
+            (pid, season_id),
+        )
+
+    # Select both players for this season
+    for pid in (focal_id, other_id):
+        conn.execute(
+            "INSERT INTO selected_players (player_id, season_id) VALUES (?, ?)",
+            (pid, season_id),
+        )
+
+    # Watched games: focal player is best in 3 of 4 games watched;
+    # other player is best in the remaining 1.  This creates an asymmetric
+    # raw score so year-normalised watch_kyle ≠ simple best/total.
+    game_ids = []
+    for i in range(4):
+        best = focal_id if i < 3 else other_id
+        gid = conn.execute(
+            """
+            INSERT INTO watched_playoff_games
+                (home_team, away_team, game_year, round, game_of_round,
+                 conference, date_watched, best_player_id)
+            VALUES ('AAA', 'BBB', ?, 'First Round', ?, 'East', '2023-05-01', ?)
+            """,
+            (season_year, i + 1, best),
+        ).lastrowid
+        game_ids.append(gid)
+
+    for gid in game_ids:
+        for pid in (focal_id, other_id):
+            conn.execute(
+                "INSERT INTO watched_game_players (game_id, player_id) VALUES (?, ?)",
+                (gid, pid),
+            )
+
+    conn.commit()
+    conn.close()
+    return focal_id, other_id, season_year
+
+
+def test_player_history_playoff_kyle_matches_peak_windows(client):
+    """
+    Regression / wire-up test: get_player_history and compute_peak_windows must
+    produce identical playoff K.Y.L.E. for a given player/season.
+
+    After the refactor both code paths delegate to _compute_season_kyle in
+    kyle_service, so this test verifies that the shared helper is correctly
+    wired into both callers (i.e. neither caller has fallen back to its own
+    inline implementation).
+    """
+    import sqlite3
+    import services.kyle_service as kyle_service
+
+    focal_id, _other_id, season_year = _seed_playoff_kyle_fixture(db_module.DB_PATH)
+
+    # -- player history path --------------------------------------------------
+    resp = client.get(f"/api/player/{focal_id}")
+    assert resp.status_code == 200
+    history = _json(resp)
+    season_row = next(
+        (s for s in history["seasons"] if s["season_year"] == season_year),
+        None,
+    )
+    assert season_row is not None, "Expected a season row for the seeded year"
+    history_playoff_kyle = season_row["kyle_rating"]
+    assert history_playoff_kyle is not None, "Expected a non-None playoff K.Y.L.E."
+
+    # -- peaks path -----------------------------------------------------------
+    conn = sqlite3.connect(db_module.DB_PATH)
+    conn.row_factory = sqlite3.Row
+    _peaks, player_years = kyle_service.compute_peak_windows(conn, window=1)
+    conn.close()
+
+    peaks_playoff_kyle = player_years[focal_id]["years"][season_year]["playoffs"]
+
+    assert history_playoff_kyle == pytest.approx(peaks_playoff_kyle, abs=1e-4), (
+        f"Player history playoff K.Y.L.E. ({history_playoff_kyle}) does not match "
+        f"compute_peak_windows ({peaks_playoff_kyle}) for year {season_year}. "
+        "This likely means watch_kyle is being computed by two different formulas."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _compute_season_kyle / _compute_season_kyle_for_player
+# ---------------------------------------------------------------------------
+
+def _seed_two_player_regular_season(db_path):
+    """Seed two selected players in a regular season; return (conn, player_ids, season_id, year)."""
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    year = 2010
+    season_id = conn.execute(
+        "INSERT INTO seasons (label, season_year, season_type) VALUES (?, ?, 'regular')",
+        (f"{year} Regular", year),
+    ).lastrowid
+
+    pids = []
+    for name in ("Alpha", "Beta"):
+        pid = conn.execute("INSERT INTO players (name) VALUES (?)", (name,)).lastrowid
+        conn.execute(
+            """
+            INSERT INTO player_stats
+                (player_id, season_id, minutes, usage_rate, true_shooting_pct,
+                 assist_rate, turnover_pct, on_court_rating, on_off_diff, bpm, defense)
+            VALUES (?, ?, 32.0, 25.0, 0.58, 18.0, 11.0, 2.5, 3.5, 1.8, 1.2)
+            """,
+            (pid, season_id),
+        )
+        conn.execute(
+            "INSERT INTO selected_players (player_id, season_id) VALUES (?, ?)",
+            (pid, season_id),
+        )
+        pids.append(pid)
+
+    conn.commit()
+    return conn, pids, season_id, year
+
+
+def test_compute_season_kyle_regular_returns_ratings(client):
+    """_compute_season_kyle returns a list with kyle_rating for each selected player."""
+    import sqlite3
+    from services.kyle_service import _compute_season_kyle, fetch_selected_player_dicts
+
+    conn, pids, season_id, year = _seed_two_player_regular_season(db_module.DB_PATH)
+    selected = fetch_selected_player_dicts(conn, season_id)
+    results = _compute_season_kyle(conn, selected, "regular", year)
+    conn.close()
+
+    assert len(results) == 2
+    result_pids = {r["player_id"] for r in results}
+    assert result_pids == set(pids)
+    for r in results:
+        assert r["kyle_rating"] is not None
+        assert isinstance(r["kyle_rating"], float)
+
+
+def test_compute_season_kyle_empty_returns_empty(client):
+    """_compute_season_kyle with an empty selected list returns []."""
+    from services.kyle_service import _compute_season_kyle
+
+    # conn is not accessed when selected_dicts is empty; pass None
+    result = _compute_season_kyle(None, [], "regular", 2020)
+    assert result == []
+
+
+def test_compute_season_kyle_does_not_mutate_input(client):
+    """_compute_season_kyle must not mutate the caller's selected_dicts list."""
+    import sqlite3
+    from services.kyle_service import _compute_season_kyle, fetch_selected_player_dicts
+
+    conn, _pids, season_id, year = _seed_two_player_regular_season(db_module.DB_PATH)
+    selected = fetch_selected_player_dicts(conn, season_id)
+
+    # Snapshot values before the call
+    before = [dict(d) for d in selected]
+    _compute_season_kyle(conn, selected, "regular", year)
+    conn.close()
+
+    # The original dicts must be unchanged
+    for orig, after in zip(before, selected):
+        assert orig == after, "Input dict was mutated by _compute_season_kyle"
+
+
+def test_compute_season_kyle_for_player_returns_rating(client):
+    """_compute_season_kyle_for_player returns the correct float for a present player."""
+    import sqlite3
+    from services.kyle_service import (
+        _compute_season_kyle,
+        _compute_season_kyle_for_player,
+        fetch_selected_player_dicts,
+    )
+
+    conn, pids, season_id, year = _seed_two_player_regular_season(db_module.DB_PATH)
+    selected = fetch_selected_player_dicts(conn, season_id)
+
+    for pid in pids:
+        rating = _compute_season_kyle_for_player(conn, pid, selected, "regular", year)
+        assert rating is not None
+        assert isinstance(rating, float)
+
+    conn.close()
+
+
+def test_compute_season_kyle_for_player_absent_returns_none(client):
+    """_compute_season_kyle_for_player returns None when the player is not in the selected set."""
+    import sqlite3
+    from services.kyle_service import _compute_season_kyle_for_player, fetch_selected_player_dicts
+
+    conn, _pids, season_id, year = _seed_two_player_regular_season(db_module.DB_PATH)
+    selected = fetch_selected_player_dicts(conn, season_id)
+    conn.close()
+
+    # player_id=99999 is not in the selected set
+    rating = _compute_season_kyle_for_player(None, 99999, selected, "regular", year)
+    assert rating is None
+
+
+def test_compute_season_kyle_for_player_matches_compute_season_kyle(client):
+    """_compute_season_kyle_for_player(pid) == the same player's rating from _compute_season_kyle."""
+    import sqlite3
+    from services.kyle_service import (
+        _compute_season_kyle,
+        _compute_season_kyle_for_player,
+        fetch_selected_player_dicts,
+    )
+
+    conn, pids, season_id, year = _seed_two_player_regular_season(db_module.DB_PATH)
+    selected = fetch_selected_player_dicts(conn, season_id)
+
+    batch = {r["player_id"]: r["kyle_rating"] for r in _compute_season_kyle(conn, selected, "regular", year)}
+    for pid in pids:
+        single = _compute_season_kyle_for_player(conn, pid, selected, "regular", year)
+        assert single == pytest.approx(batch[pid], abs=1e-6), (
+            f"_compute_season_kyle_for_player ({single}) != _compute_season_kyle ({batch[pid]}) "
+            f"for player {pid}"
+        )
+
+    conn.close()

@@ -11,8 +11,8 @@ from __future__ import annotations
 import logging
 from datetime import date as _date
 
-import kyle
 from scraper import abbr_to_team_name_variants, scrape_player_birthdate
+from services.kyle_service import _compute_season_kyle_for_player, fetch_selected_player_dicts
 from services.watch_log_service import get_watch_kyle_by_player
 
 logger = logging.getLogger(__name__)
@@ -83,52 +83,6 @@ def get_player_history(conn, player_id: int) -> dict:
 
     season_ids = [r["season_id"] for r in season_rows]
 
-    # Batch-fetch selected-player stats for all relevant seasons
-    selected_by_season: dict[int, list[dict]] = {}
-    if season_ids:
-        placeholders = ",".join("?" * len(season_ids))
-        selected_all = conn.execute(
-            f"""
-            SELECT sp.season_id,
-                   p.id AS player_id, p.name,
-                   ps.minutes, ps.usage_rate, ps.true_shooting_pct,
-                   ps.assist_rate, ps.turnover_pct, ps.on_court_rating,
-                   ps.on_off_diff, ps.bpm, ps.defense, ps.on_off_asterisk
-            FROM selected_players sp
-            JOIN players p       ON p.id  = sp.player_id
-            JOIN player_stats ps ON ps.player_id = sp.player_id
-                                 AND ps.season_id = sp.season_id
-            WHERE sp.season_id IN ({placeholders})
-            """,
-            season_ids,
-        ).fetchall()
-        for r in selected_all:
-            selected_by_season.setdefault(r["season_id"], []).append(dict(r))
-
-    # Per-year watch_kyle for this player (simple pct-of-best, not year-normalised)
-    watch_kyle_per_year: dict[int, float] = {}
-    for r in conn.execute(
-        """
-        SELECT
-            g.game_year,
-            COUNT(DISTINCT wgp.game_id) AS total_watched,
-            COUNT(DISTINCT CASE WHEN g.best_player_id = ? THEN g.id END) AS best_count
-        FROM watched_game_players wgp
-        JOIN watched_playoff_games g ON g.id = wgp.game_id
-        WHERE wgp.player_id = ?
-        GROUP BY g.game_year
-        """,
-        (player_id, player_id),
-    ).fetchall():
-        total = r["total_watched"] or 0
-        best  = r["best_count"] or 0
-        if total > 0:
-            watch_kyle_per_year[r["game_year"]] = round(best / total * 2 - 1, 3)
-
-    # Batch watch-maps for all playoff years (needed for selected-set bounds)
-    playoff_years = {r["season_year"] for r in season_rows if r["season_type"] == "playoffs"}
-    watch_map_by_year = {yr: get_watch_kyle_by_player(conn, yr) for yr in playoff_years}
-
     # Scrape birthdate on first visit if missing
     ensure_birthdate(conn, player_dict)
 
@@ -139,26 +93,11 @@ def get_player_history(conn, player_id: int) -> dict:
         season_type = row_dict["season_type"]
         season_year = row_dict["season_year"]
 
-        kyle_rating = None
-        selected = selected_by_season.get(season_id, [])
-        if selected:
-            exclude   = {"minutes"} if season_type == "playoffs" else set()
-            sel_dicts = [dict(r) for r in selected]
-            if season_type == "playoffs":
-                watch_map = watch_map_by_year.get(season_year, {})
-                for d in sel_dicts:
-                    wk = watch_map.get(d["player_id"])
-                    d["watch_kyle"] = wk["watch_kyle"] if wk else None
-            kyle._add_derived(sel_dicts)
-            bounds = kyle.compute_bounds(sel_dicts, exclude_fields=exclude)
-            target = dict(row_dict)
-            target["player_id"] = player_id
-            target["name"]      = player_dict["name"]
-            if season_type == "playoffs":
-                target["watch_kyle"] = watch_kyle_per_year.get(season_year)
-            kyle._add_derived([target])
-            kyle._apply_bounds([target], bounds, clamp=True)
-            kyle_rating = target.get("kyle_rating")
+        # Use the shared helper so this path stays in sync with compute_peak_windows
+        selected_dicts = fetch_selected_player_dicts(conn, season_id)
+        kyle_rating = _compute_season_kyle_for_player(
+            conn, player_id, selected_dicts, season_type, season_year
+        )
 
         age = None
         if player_dict.get("birthdate"):
@@ -338,7 +277,28 @@ def get_peak_opponent_games(conn, player_id: int, window: int) -> dict:
         }
 
     # 5. Left-join to watched_playoff_games for each qualifying game.
-    # Pre-compute game_of_round by ranking each focal game within its series.
+    # Pre-compute game_of_round by ranking each game within its series using
+    # ALL player appearances (not just the focal player's) so that games the
+    # focal player missed are still counted, keeping game numbers in sync with
+    # what is stored in watched_playoff_games.
+    series_matchups = {(r["season_year"], r["team_abbr"], r["opp_abbr"]) for r in qualifying}
+    series_all_dates: dict[tuple, list[str]] = {}
+    for sy, ta, oa in series_matchups:
+        date_rows = conn.execute(
+            """
+            SELECT DISTINCT game_date FROM player_game_appearances
+            WHERE season_year = ? AND season_type = 'playoffs'
+              AND ((team_abbr = ? AND opp_abbr = ?) OR (team_abbr = ? AND opp_abbr = ?))
+            ORDER BY game_date
+            """,
+            (sy, ta, oa, oa, ta),
+        ).fetchall()
+        key_fwd = (sy, ta, oa)
+        key_rev = (sy, oa, ta)
+        dates = [d[0] for d in date_rows]
+        series_all_dates[key_fwd] = dates
+        series_all_dates[key_rev] = dates
+
     series_game_count: dict[tuple, int] = defaultdict(int)
 
     games_out = []
@@ -347,8 +307,13 @@ def get_peak_opponent_games(conn, player_id: int, window: int) -> dict:
         ta = row["team_abbr"]
         oa = row["opp_abbr"]
         series_key = (sy, ta, oa)
-        series_game_count[series_key] += 1
-        game_of_round = series_game_count[series_key]
+        all_dates = series_all_dates.get(series_key, [])
+        if row["game_date"] in all_dates:
+            game_of_round = all_dates.index(row["game_date"]) + 1
+        else:
+            # Fallback: count focal appearances sequentially
+            series_game_count[series_key] += 1
+            game_of_round = series_game_count[series_key]
 
         ta_variants = abbr_to_team_name_variants(ta, sy)
         oa_variants = abbr_to_team_name_variants(oa, sy)

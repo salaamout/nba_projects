@@ -74,6 +74,67 @@ def _db_fingerprint(conn) -> tuple:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _compute_season_kyle(
+    conn,
+    selected_dicts: list[dict],
+    season_type: str,
+    season_year: int,
+) -> list[dict]:
+    """Annotate *selected_dicts* with watch data and compute K.Y.L.E. ratings.
+
+    This is the single source of truth for turning a season's selected-player
+    set into fully-computed K.Y.L.E. result dicts.  Both ``compute_cumulative``
+    and ``compute_peak_windows`` delegate to this helper so the two code paths
+    can never drift.
+
+    Parameters
+    ----------
+    conn           : active DB connection
+    selected_dicts : list of player-stat dicts for the season (will be copied)
+    season_type    : ``"regular"`` or ``"playoffs"``
+    season_year    : calendar year of the season (used to look up watch data)
+
+    Returns
+    -------
+    list[dict]
+        Each dict is a player result with all original fields plus derived /
+        normalised ones, including ``kyle_rating``.
+    """
+    if not selected_dicts:
+        return []
+    dicts = [dict(d) for d in selected_dicts]
+    if season_type == "playoffs":
+        watch_map = get_watch_kyle_by_player(conn, season_year)
+        for d in dicts:
+            wk = watch_map.get(d["player_id"])
+            d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
+            d["watch_best_count"]    = wk["best_count"]    if wk else None
+            d["watch_total_watched"] = wk["total_watched"] if wk else None
+    return kyle.calculate(dicts, season_type=season_type)
+
+
+def _compute_season_kyle_for_player(
+    conn,
+    player_id: int,
+    selected_dicts: list[dict],
+    season_type: str,
+    season_year: int,
+) -> float | None:
+    """Return the K.Y.L.E. rating for a single player within a season's selected set.
+
+    Delegates to ``_compute_season_kyle`` so both the per-player history view
+    and the peak-window computation share identical rating logic.
+
+    Returns ``None`` if *player_id* is not present in *selected_dicts* or if
+    no rating could be computed.
+    """
+    results = _compute_season_kyle(conn, selected_dicts, season_type, season_year)
+    for p in results:
+        if p["player_id"] == player_id:
+            return p.get("kyle_rating")
+    return None
+
+
 def fetch_selected_player_dicts(conn, season_id: int) -> list[dict]:
     """Return selected players for a season as a list of plain dicts.
 
@@ -144,15 +205,7 @@ def compute_cumulative(conn) -> list[dict]:
         if not player_dicts:
             continue
 
-        if season_type == "playoffs":
-            watch_map = get_watch_kyle_by_player(conn, season["season_year"])
-            for d in player_dicts:
-                wk = watch_map.get(d["player_id"])
-                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-                d["watch_best_count"]    = wk["best_count"]    if wk else None
-                d["watch_total_watched"] = wk["total_watched"] if wk else None
-
-        calculated = kyle.calculate(player_dicts, season_type=season_type)
+        calculated = _compute_season_kyle(conn, player_dicts, season_type, season["season_year"])
 
         for p in calculated:
             pid    = p["player_id"]
@@ -226,16 +279,7 @@ def compute_peak_windows(conn, window: int) -> tuple[list[dict], dict]:
         if not player_dicts:
             continue
 
-        watch_map: dict = {}
-        if season_type == "playoffs":
-            watch_map = get_watch_kyle_by_player(conn, season_year)
-            for d in player_dicts:
-                wk = watch_map.get(d["player_id"])
-                d["watch_kyle"]          = wk["watch_kyle"]    if wk else None
-                d["watch_best_count"]    = wk["best_count"]    if wk else None
-                d["watch_total_watched"] = wk["total_watched"] if wk else None
-
-        calculated = kyle.calculate(player_dicts, season_type=season_type)
+        calculated = _compute_season_kyle(conn, player_dicts, season_type, season_year)
 
         for p in calculated:
             pid    = p["player_id"]
@@ -251,9 +295,9 @@ def compute_peak_windows(conn, window: int) -> tuple[list[dict], dict]:
                 yr_data["regular"] += rating
             else:
                 yr_data["playoffs"] += rating
-                wk = watch_map.get(pid)
-                if wk and wk.get("watch_kyle") is not None:
-                    yr_data["watch_kyle"] = wk["watch_kyle"]
+                wk_val = p.get("watch_kyle")
+                if wk_val is not None:
+                    yr_data["watch_kyle"] = wk_val
 
     peaks: list[dict] = []
 
