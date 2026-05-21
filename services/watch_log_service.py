@@ -91,13 +91,22 @@ def get_watch_kyle_by_player(conn, season_year: int) -> dict[int, dict]:
         })
 
     # Pass 2 — year-level normalisation
+    # Anchors: raw=0 → -1.00, raw=1.0 → 0.00, raw=max_raw → +1.00
+    # Piecewise linear between anchors.  If max_raw ≤ 1 the upper segment
+    # collapses and the ceiling will be ≤ 0 (by design).
     max_raw = max((p["raw"] for p in players), default=0.0)
+
+    def _normalise(raw: float) -> float:
+        if raw <= 1.0:
+            return raw - 1.0                          # [0, 1] → [-1, 0]
+        else:
+            return (raw - 1.0) / (max_raw - 1.0)     # (1, max_raw] → (0, 1]
 
     result: dict[int, dict] = {}
     for p in players:
         if p["total_watched"] == 0:
             continue
-        watch_kyle = round((p["raw"] / max_raw) * 2 - 1, 3) if max_raw > 0 else 0.0
+        watch_kyle = round(_normalise(p["raw"]), 3) if max_raw > 0 else 0.0
         result[p["player_id"]] = {
             "watch_kyle":    watch_kyle,
             "best_count":    p["weighted_best"],   # weighted N
