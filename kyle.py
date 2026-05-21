@@ -212,37 +212,51 @@ def calculate_all(all_player_rows, selected_bounds, season_type="regular"):
     return rows
 
 
-def compute_least_squares_scores(comparisons):
-    """Solve a least-squares ranking system from pairwise comparisons.
+def compute_least_squares_scores(comparisons, ties=None):
+    """Solve a least-squares ranking system from pairwise comparisons and ties.
 
     Parameters
     ----------
     comparisons : list of (winner_id, loser_id)
         Each tuple represents one pairwise comparison where winner beat loser.
+        Adds a row:  score_winner - score_loser = 1
+    ties : list of (id_a, id_b) | None
+        Each tuple represents a tie between two players.
+        Adds a row:  score_a - score_b = 0
 
     Returns
     -------
     dict mapping player_id -> ls_score (float, rounded to 4 decimal places)
     """
-    if not comparisons:
+    ties = ties or []
+    all_pairs = comparisons + ties
+    if not all_pairs:
         return {}
 
     # Build sorted unique player list and index map
-    player_ids = sorted({pid for pair in comparisons for pid in pair})
+    player_ids = sorted({pid for pair in all_pairs for pid in pair})
     if len(player_ids) < 2:
         return {}
 
     idx = {pid: i for i, pid in enumerate(player_ids)}
     P = len(player_ids)
-    E = len(comparisons)
+    E = len(all_pairs)
 
     # Build A (E x P) and b (E,)
+    # Wins/losses get b=1; ties get b=0
     A = np.zeros((E, P), dtype=float)
-    b = np.ones(E, dtype=float)
+    b = np.zeros(E, dtype=float)
 
     for row, (winner, loser) in enumerate(comparisons):
         A[row, idx[winner]] = 1.0
         A[row, idx[loser]]  = -1.0
+        b[row]              = 1.0
+
+    offset = len(comparisons)
+    for row, (a, b_id) in enumerate(ties):
+        A[offset + row, idx[a]]    = 1.0
+        A[offset + row, idx[b_id]] = -1.0
+        # b[offset + row] = 0.0  (already zero)
 
     # Append zero-mean regularization row: sum(s) = 0
     reg_row = np.ones((1, P), dtype=float)

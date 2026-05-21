@@ -444,6 +444,8 @@ def compute_best3year(conn, window: int = 3) -> list[dict]:
     comparisons: list[tuple[int, int]] = []
     win_counts:  dict[int, int] = defaultdict(int)
     loss_counts: dict[int, int] = defaultdict(int)
+    ties:        list[tuple[int, int]] = []
+    tie_counts:  dict[int, int] = defaultdict(int)
 
     for gid, gdata in games_map.items():
         game_year = gdata["game_year"]
@@ -456,25 +458,42 @@ def compute_best3year(conn, window: int = 3) -> list[dict]:
             and peak_windows_map[pid][0] <= game_year <= peak_windows_map[pid][1]
             and pid in qualified_players
         ]
-        if best_id not in filtered or len(filtered) < 2:
-            continue
-        for other_id in filtered:
-            if other_id == best_id:
-                continue
-            comparisons.append((best_id, other_id))
-            win_counts[best_id]    += 1
-            loss_counts[other_id]  += 1
 
-    ls_scores = kyle.compute_least_squares_scores(comparisons)
+        if best_id in filtered and len(filtered) >= 2:
+            # Standard win/loss comparisons
+            for other_id in filtered:
+                if other_id == best_id:
+                    continue
+                comparisons.append((best_id, other_id))
+                win_counts[best_id]   += 1
+                loss_counts[other_id] += 1
+            # Case B: tie among all non-best qualified players
+            non_best = [pid for pid in filtered if pid != best_id]
+            for i in range(len(non_best)):
+                for j in range(i + 1, len(non_best)):
+                    ties.append((non_best[i], non_best[j]))
+                    tie_counts[non_best[i]] += 1
+                    tie_counts[non_best[j]] += 1
+        elif best_id not in filtered and len(filtered) >= 2:
+            # Case A: best player outside LS window — tie among all qualified players
+            for i in range(len(filtered)):
+                for j in range(i + 1, len(filtered)):
+                    ties.append((filtered[i], filtered[j]))
+                    tie_counts[filtered[i]] += 1
+                    tie_counts[filtered[j]] += 1
+
+    ls_scores = kyle.compute_least_squares_scores(comparisons, ties=ties)
 
     for entry in result:
         pid = entry["player_id"]
         w   = win_counts.get(pid, 0)
         l   = loss_counts.get(pid, 0)
+        t   = tie_counts.get(pid, 0)
         entry["ls_score"]        = ls_scores.get(pid)
         entry["ls_wins"]         = w
         entry["ls_losses"]       = l
-        entry["ls_comparisons"]  = w + l
+        entry["ls_ties"]         = t
+        entry["ls_comparisons"]  = w + l + t
 
     result.sort(key=lambda x: x["best_window_total"], reverse=True)
     _kyle_cache_set(cache_key, result)

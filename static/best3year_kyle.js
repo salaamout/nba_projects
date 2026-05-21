@@ -249,7 +249,12 @@ function buildRow(player, rank) {
 
     } else if (col.isLS) {
       td.className   = "num-cell";
-      td.textContent = player.ls_score != null ? parseFloat(player.ls_score).toFixed(4) : "\u2014";
+      if (player.ls_score != null) {
+        const games = player.ls_comparisons != null ? player.ls_comparisons : 0;
+        td.textContent = `${parseFloat(player.ls_score).toFixed(4)} (${games})`;
+      } else {
+        td.textContent = "\u2014";
+      }
 
     } else {
       td.className = "kyle-cell";
