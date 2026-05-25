@@ -310,93 +310,106 @@ def _make_watch_db(games):
     return conn
 
 
-def test_watch_kyle_never_best_is_minus_one():
-    """A player with raw=0 (never best) must get watch_kyle = -1.00."""
+def test_watch_kyle_never_best_zero_pae():
+    """Worst PAE player in the year (never best) → watch_kyle = -1.0."""
     conn = _make_watch_db([
         {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
         {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
     ])
     wk = get_watch_kyle_by_player(conn, 2024)
+    # player 1: PAE = 2-2 = 0 (best), player 2: PAE = 0-2 = -2 (worst)
+    assert wk[1]["watch_kyle"] == pytest.approx(1.0)
     assert wk[2]["watch_kyle"] == pytest.approx(-1.0)
 
 
-def test_watch_kyle_raw_equals_one_is_zero():
-    """
-    A player with raw = 1.0 (weighted_best == total_watched via First Round
-    weights of 1) must get watch_kyle = 0.00.
-    """
-    # Player 1: best in all 3 First-Round games → weighted_best=3, total=3, raw=1.0
-    # Player 2: never best → raw=0
+def test_watch_kyle_best_every_game_pae():
+    """Best player every game has the highest PAE → watch_kyle = +1.0."""
     conn = _make_watch_db([
         {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
         {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
         {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
     ])
+    wk = get_watch_kyle_by_player(conn, 2024)
+    # player 1: PAE = 3-3 = 0 (best), player 2: PAE = 0-3 = -3 (worst)
+    assert wk[1]["watch_kyle"] == pytest.approx(1.0)
+    assert wk[2]["watch_kyle"] == pytest.approx(-1.0)
+
+
+def test_watch_kyle_round_weights():
+    """PAE uses round ordinals: First Round=1, Conference Finals=3."""
+    # Player 1: best in 1 First Round (PAE=0), player 2: best in 1 Conference Finals (PAE=+2)
+    # player 3: best in 0 games out of 2 (PAE=-2)
+    conn = _make_watch_db([
+        {"player_ids": [1, 2, 3], "best_id": 1, "round": "First Round"},   # p1+1
+        {"player_ids": [1, 2, 3], "best_id": 2, "round": "Conference Finals"},  # p2+3
+        {"player_ids": [1, 2, 3], "best_id": 1, "round": "First Round"},   # p1+1, all watch
+    ])
+    # p1: weighted=2, total=3, PAE=-1
+    # p2: weighted=3, total=3, PAE=0
+    # p3: weighted=0, total=3, PAE=-3  ← min
+    # span = 0 - (-3) = 3
+    # p3: (-3 - -3)/3 * 2 - 1 = -1.0
+    # p1: (-1 - -3)/3 * 2 - 1 = 2/3 * 2 - 1 = 1/3 ≈ 0.333
+    # p2: (0 - -3)/3 * 2 - 1 = 1.0
+    wk = get_watch_kyle_by_player(conn, 2024)
+    assert wk[2]["watch_kyle"] == pytest.approx(1.0)
+    assert wk[3]["watch_kyle"] == pytest.approx(-1.0)
+    assert wk[1]["watch_kyle"] == pytest.approx(1/3, rel=1e-3)
+
+
+def test_watch_kyle_nba_finals_weight():
+    """NBA Finals counts as 4 points; higher PAE → higher normalized score."""
+    conn = _make_watch_db([
+        {"player_ids": [1, 2], "best_id": 1, "round": "NBA Finals"},   # p1+4
+        {"player_ids": [1, 2], "best_id": 2, "round": "NBA Finals"},   # p2+4
+        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},  # p2+1
+        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},  # p2+1
+    ])
+    # p1: weighted=4, total=4, PAE=0 → worst
+    # p2: weighted=4+1+1=6, total=4, PAE=+2 → best
+    wk = get_watch_kyle_by_player(conn, 2024)
+    assert wk[2]["watch_kyle"] == pytest.approx(1.0)
+    assert wk[1]["watch_kyle"] == pytest.approx(-1.0)
+
+
+def test_watch_kyle_partial_best():
+    """Middle PAE player interpolates between -1 and +1."""
+    conn = _make_watch_db([
+        {"player_ids": [1, 2, 3], "best_id": 1, "round": "First Round"},  # p1+1
+        {"player_ids": [1, 2, 3], "best_id": 2, "round": "First Round"},  # p2+1
+        {"player_ids": [1, 2, 3], "best_id": 2, "round": "First Round"},  # p2+1
+        {"player_ids": [1, 2, 3], "best_id": 3, "round": "NBA Finals"},   # p3+4
+    ])
+    # p1: weighted=1, total=4, PAE=-3
+    # p2: weighted=2, total=4, PAE=-2
+    # p3: weighted=4, total=4, PAE=0  ← max
+    # span = 0 - (-3) = 3
+    # p1: (-3 - -3)/3 * 2 - 1 = -1.0
+    # p2: (-2 - -3)/3 * 2 - 1 = 1/3 * 2 - 1 = -1/3
+    # p3: (0 - -3)/3 * 2 - 1 = +1.0
+    wk = get_watch_kyle_by_player(conn, 2024)
+    assert wk[3]["watch_kyle"] == pytest.approx(1.0)
+    assert wk[1]["watch_kyle"] == pytest.approx(-1.0)
+    assert wk[2]["watch_kyle"] == pytest.approx(-1/3, rel=1e-3)
+
+
+def test_watch_kyle_not_watched_absent():
+    """A player with no watch-log entries is absent from the result dict."""
+    conn = _make_watch_db([
+        {"player_ids": [1], "best_id": 1, "round": "First Round"},
+    ])
+    wk = get_watch_kyle_by_player(conn, 2024)
+    assert 99 not in wk  # player 99 never watched → not in dict (contributes 0 to kyle_rating)
+
+
+def test_watch_kyle_single_player_all_same_pae():
+    """When all players have the same PAE (span=0) → watch_kyle = 0.0 for all."""
+    conn = _make_watch_db([
+        {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
+        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},
+    ])
+    # p1: PAE = 1-2 = -1, p2: PAE = 1-2 = -1 → span=0
     wk = get_watch_kyle_by_player(conn, 2024)
     assert wk[1]["watch_kyle"] == pytest.approx(0.0)
-    assert wk[2]["watch_kyle"] == pytest.approx(-1.0)
-
-
-def test_watch_kyle_best_player_is_plus_one():
-    """The player with max raw must always get watch_kyle = +1.00."""
-    # Player 1: best in 2 of 4 First-Round games → raw=0.5
-    # Player 2: best in all 4 → raw=1.0 (max_raw=1.0, upper segment collapses)
-    # With max_raw=1.0 the best player still lands on the lower-segment formula: 1.0-1=0
-    # So here we need max_raw > 1 to reach +1; use a Finals game.
-    # Player 1: best in 1 Finals game out of 4 watched → weighted_best=4, total=4, raw=1.0
-    # Player 2: best in 1 Finals + 1 First Round out of 4 → weighted_best=5, total=4, raw=1.25
-    conn = _make_watch_db([
-        {"player_ids": [1, 2], "best_id": 1, "round": "NBA Finals"},   # weight 4 → player1 +4
-        {"player_ids": [1, 2], "best_id": 2, "round": "NBA Finals"},   # weight 4 → player2 +4
-        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},  # weight 1 → player2 +1
-        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},  # weight 1 → player2 +1
-    ])
-    # player1: weighted_best=4, total=4, raw=1.0
-    # player2: weighted_best=6, total=4, raw=1.5  ← max_raw
-    wk = get_watch_kyle_by_player(conn, 2024)
-    assert wk[2]["watch_kyle"] == pytest.approx(1.0)
-
-
-def test_watch_kyle_interpolates_upper_segment():
-    """
-    A player with raw midway between 1.0 and max_raw should get ~0.5.
-    raw=1.0 → 0.0, raw=max_raw → 1.0, so raw = (1 + max_raw) / 2 → 0.5.
-    """
-    # Player 1: best in 1 First-Round game out of 2 → weighted_best=1, total=2, raw=0.5  (lower seg)
-    # Player 2: best in both Finals games out of 2  → weighted_best=8, total=2, raw=4.0  (max_raw)
-    # Player 3: best in 1 Finals game out of 2      → weighted_best=4, total=2, raw=2.0
-    #   mid = (1 + 4) / 2 = 2.5 → not exactly mid; let's compute expected manually.
-    #   expected for player3: (2.0 - 1) / (4.0 - 1) = 1/3 ≈ 0.333
-    conn = _make_watch_db([
-        {"player_ids": [1, 2, 3], "best_id": 2, "round": "NBA Finals"},   # p2+4, others 0
-        {"player_ids": [1, 2, 3], "best_id": 2, "round": "NBA Finals"},   # p2+4
-        {"player_ids": [1, 2, 3], "best_id": 3, "round": "NBA Finals"},   # p3+4
-        {"player_ids": [1, 2, 3], "best_id": 1, "round": "First Round"},  # p1+1
-    ])
-    # p1: weighted=1, total=4, raw=0.25
-    # p2: weighted=8, total=4, raw=2.0  ← max_raw
-    # p3: weighted=4, total=4, raw=1.0
-    wk = get_watch_kyle_by_player(conn, 2024)
-    assert wk[2]["watch_kyle"] == pytest.approx(1.0)
-    assert wk[3]["watch_kyle"] == pytest.approx(0.0)           # raw=1.0 → neutral
-    assert wk[1]["watch_kyle"] == pytest.approx(0.25 - 1.0)   # lower segment: raw - 1
-
-
-def test_watch_kyle_max_raw_below_one_ceiling_is_negative():
-    """
-    When max_raw < 1 (all players' raw < 1), the ceiling is negative.
-    Only the lower segment applies: watch_kyle = raw - 1.
-    """
-    # Both players watched 4 games; player1 best in 1 (raw=0.25), player2 best in 2 (raw=0.5).
-    conn = _make_watch_db([
-        {"player_ids": [1, 2], "best_id": 1, "round": "First Round"},
-        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},
-        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},
-        {"player_ids": [1, 2], "best_id": 2, "round": "First Round"},  # p2 in 3/4 games
-    ])
-    # p1: raw=0.25 → watch_kyle = 0.25 - 1 = -0.75
-    # p2: raw=0.75 → watch_kyle = 0.75 - 1 = -0.25  (max_raw=0.75 < 1)
-    wk = get_watch_kyle_by_player(conn, 2024)
-    assert wk[1]["watch_kyle"] == pytest.approx(-0.75)
-    assert wk[2]["watch_kyle"] == pytest.approx(-0.25)
+    assert wk[2]["watch_kyle"] == pytest.approx(0.0)
 

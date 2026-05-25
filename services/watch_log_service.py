@@ -47,11 +47,15 @@ _ROUND_KEY: dict[str, str] = {
 def get_watch_kyle_by_player(conn, season_year: int) -> dict[int, dict]:
     """Return dict of player_id → watch info for a given playoff year.
 
-    Uses round-weighted scoring:
-      N = sum of round_weight for games where the player was Best Player
-      M = total unweighted games watched
-      raw_score = N / M
-      watch_kyle = (raw_score / max_raw) * 2 − 1  (year-normalised to −1..+1)
+    Uses points-above-expectation (PAE) scoring:
+      weighted_best = sum of round ordinal (1/2/3/4) for games where the
+                      player was Best Player
+      total_watched = total unweighted games watched
+      watch_kyle    = weighted_best − total_watched
+
+    Round ordinals: First Round=1, Second Round=2, Conference Finals=3,
+    NBA Finals=4.  Expectation is 1 point per game watched.  A player not
+    present in the watch log contributes 0 to their K.Y.L.E. rating.
     """
     rows = conn.execute(
         """
@@ -77,41 +81,39 @@ def get_watch_kyle_by_player(conn, season_year: int) -> dict[int, dict]:
         (season_year,),
     ).fetchall()
 
-    # Pass 1 — compute raw scores
+    # Pass 1 — compute PAE (points above expectation) for each player
     players = []
     for r in rows:
         M = r["total_watched"] or 0
+        if M == 0:
+            continue
         N = r["weighted_best"] or 0.0
-        raw = N / M if M > 0 else 0.0
         players.append({
             "player_id":     r["player_id"],
             "total_watched": M,
             "weighted_best": N,
-            "raw":           raw,
+            "pae":           N - M,
         })
 
-    # Pass 2 — year-level normalisation
-    # Anchors: raw=0 → -1.00, raw=1.0 → 0.00, raw=max_raw → +1.00
-    # Piecewise linear between anchors.  If max_raw ≤ 1 the upper segment
-    # collapses and the ceiling will be ≤ 0 (by design).
-    max_raw = max((p["raw"] for p in players), default=0.0)
+    if not players:
+        return {}
 
-    def _normalise(raw: float) -> float:
-        if raw <= 1.0:
-            return raw - 1.0                          # [0, 1] → [-1, 0]
-        else:
-            return (raw - 1.0) / (max_raw - 1.0)     # (1, max_raw] → (0, 1]
+    # Pass 2 — min-max normalise PAE within this year: min→-1, max→+1
+    min_pae = min(p["pae"] for p in players)
+    max_pae = max(p["pae"] for p in players)
+    span = max_pae - min_pae
 
     result: dict[int, dict] = {}
     for p in players:
-        if p["total_watched"] == 0:
-            continue
-        watch_kyle = round(_normalise(p["raw"]), 3) if max_raw > 0 else 0.0
+        if span == 0:
+            norm = 0.0
+        else:
+            norm = (p["pae"] - min_pae) / span * 2 - 1
         result[p["player_id"]] = {
-            "watch_kyle":    watch_kyle,
-            "best_count":    p["weighted_best"],   # weighted N
-            "total_watched": p["total_watched"],   # unweighted M
-            "raw_score":     round(p["raw"], 4),
+            "watch_kyle":    round(norm, 3),
+            "best_count":    p["weighted_best"],
+            "total_watched": p["total_watched"],
+            "raw_score":     round(p["pae"], 4),   # raw PAE stored for reference
         }
     return result
 
@@ -183,38 +185,31 @@ def compute_leaderboard(conn) -> list[dict]:
             player_round_data[rr["player_id"]][key]["best"]  = rr["best_in_round"]
             player_round_data[rr["player_id"]][key]["games"] = rr["games_in_round"]
 
-    # Accumulate per-year raw scores
-    year_player_raw: dict[int, dict[int, float]] = defaultdict(dict)
+    # Accumulate per-player totals and per-year PAE for normalisation
     year_player_info: dict[int, str] = {}
     player_year_data: dict = defaultdict(lambda: {"total_watched_games": 0, "weighted_best_total": 0.0})
+    year_player_pae: dict[int, dict[int, float]] = defaultdict(dict)  # year → {pid: pae}
 
     for r in rows:
         M = r["total_watched"] or 0
         N = r["weighted_best"] or 0.0
-        raw = N / M if M > 0 else 0.0
-        year_player_raw[r["game_year"]][r["player_id"]] = raw
         year_player_info[r["player_id"]] = r["name"]
         player_year_data[r["player_id"]]["total_watched_games"] += M
         player_year_data[r["player_id"]]["weighted_best_total"] += N
+        if M > 0:
+            year_player_pae[r["game_year"]][r["player_id"]] = N - M
 
-    year_max_raw = {yr: max(raws.values(), default=0.0) for yr, raws in year_player_raw.items()}
-
-    # Build O(1) lookup: (player_id, game_year) -> total_watched to avoid O(n²) scan
-    watched_by_player_year: dict[tuple[int, int], int] = {
-        (r["player_id"], r["game_year"]): (r["total_watched"] or 0)
-        for r in rows
-    }
-
-    # Sum normalised watch_kyle per player across all years
+    # Normalise PAE per year (min→-1, max→+1) and sum across years
     player_watch_kyle_sum: dict[int, float] = defaultdict(float)
-    for yr, player_raws in year_player_raw.items():
-        max_raw = year_max_raw[yr]
-        for pid, raw in player_raws.items():
-            M_yr = watched_by_player_year.get((pid, yr), 0)
-            if M_yr == 0:
-                continue
-            wk = round((raw / max_raw) * 2 - 1, 3) if max_raw > 0 else 0.0
-            player_watch_kyle_sum[pid] += wk
+    for yr, pae_map in year_player_pae.items():
+        if not pae_map:
+            continue
+        min_pae = min(pae_map.values())
+        max_pae = max(pae_map.values())
+        span = max_pae - min_pae
+        for pid, pae in pae_map.items():
+            norm = (pae - min_pae) / span * 2 - 1 if span != 0 else 0.0
+            player_watch_kyle_sum[pid] += norm
 
     result = []
     for pid, name in year_player_info.items():
