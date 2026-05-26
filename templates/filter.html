@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K.Y.L.E. — Player Filter</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* ── Filter builder ─────────────────────────── */
+    .filter-section {
+      max-width: 960px;
+      margin: 0 auto 28px;
+    }
+    .filter-section h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 14px;
+    }
+    #filter-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .filter-row label {
+      font-size: .8rem;
+      color: #8b949e;
+      white-space: nowrap;
+    }
+    .filter-row select,
+    .filter-row input[type="number"] {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 5px 8px;
+      font-size: .85rem;
+      outline: none;
+    }
+    .filter-row select:focus,
+    .filter-row input[type="number"]:focus {
+      border-color: #58a6ff;
+    }
+    .filter-row .sel-field    { min-width: 180px; }
+    .filter-row .sel-operator { width: 60px; }
+    .filter-row .inp-value    { width: 90px; }
+    .filter-row .sel-season   { width: 110px; }
+    .filter-row .btn-remove-filter {
+      background: transparent;
+      color: #f85149;
+      border: 1px solid #f85149;
+      padding: 4px 9px;
+      font-size: .78rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      line-height: 1;
+      margin-left: auto;
+    }
+    .filter-row .btn-remove-filter:hover { background: rgba(248,81,73,.12); }
+
+    .filter-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #btn-add-filter {
+      background: #1a3a5c;
+      color: #58a6ff;
+      border: 1px solid #58a6ff;
+    }
+    #btn-add-filter:hover { background: #1f4a7a; }
+
+    #btn-search {
+      background: #238636;
+      color: #fff;
+      border: none;
+      min-width: 80px;
+    }
+    #btn-search:hover { background: #2ea043; }
+    #btn-search:disabled { background: #3d4b2f; }
+
+    #btn-clear-filters {
+      background: transparent;
+      color: #8b949e;
+      border: 1px solid #30363d;
+    }
+    #btn-clear-filters:hover { background: #21262d; }
+
+    /* ── Results section ────────────────────────── */
+    .results-section {
+      max-width: 100%;
+    }
+    #results-summary {
+      font-size: .85rem;
+      color: #8b949e;
+      margin-bottom: 12px;
+      min-height: 1.2em;
+    }
+    #results-summary .match-count { color: #3fb950; font-weight: 600; }
+
+    /* season-type badge in results */
+    .badge {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .badge-regular  { background: #1a3a5c; color: #58a6ff; }
+    .badge-playoffs { background: #3a1a4a; color: #c0a0f0; }
+
+    /* asterisk indicator */
+    .asterisk-note {
+      color: #f0a070;
+      font-size: .72rem;
+      margin-left: 2px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>K.Y.L.E. NBA Stats</h1>
+    <div class="controls">
+      <span id="spinner" class="spinner hidden"></span>
+      <span id="status-msg" class="update-msg"></span>
+
+      <a href="/" class="btn-nav">← Selected Players</a>
+      <a href="/all" class="btn-nav">All Players</a>
+      <a href="/cumulative" class="btn-nav">Cumulative</a>
+      <a href="/best3year" class="btn-nav">Best 3-Year</a>
+      <a href="/watch_log" class="btn-nav">Watch Log</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Filter builder -->
+    <div class="filter-section">
+      <h2>Filter Criteria</h2>
+      <div id="filter-rows">
+        <!-- filter rows injected by JS -->
+      </div>
+      <div class="filter-actions">
+        <button id="btn-add-filter">+ Add Filter</button>
+        <button id="btn-search">Search</button>
+        <button id="btn-clear-filters">Clear All</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results-section">
+      <div id="results-summary"></div>
+      <div id="table-wrap">
+        <table id="filter-table">
+          <thead>
+            <tr id="header-row"></tr>
+            <tr id="subheader-row"></tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+        <p id="empty-msg" class="empty-msg hidden">
+          No player-seasons matched your filters.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/filter.js"></script>
+</body>
+</html>

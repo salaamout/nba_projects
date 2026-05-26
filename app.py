@@ -13,6 +13,7 @@ import services.kyle_service    as kyle_service
 import services.watch_log_service as watch_log_service
 import services.player_service  as player_service
 import services.suggest_service as suggest_service
+import services.filter_service  as filter_service
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -70,6 +71,11 @@ def best3year_page():
 @app.route("/watch_log")
 def watch_log_page():
     return render_template("watch_log.html")
+
+
+@app.route("/filter")
+def filter_page():
+    return render_template("filter.html")
 
 
 @app.route("/player/<int:player_id>")
@@ -370,6 +376,42 @@ def best3year():
     with db_conn() as conn:
         result = kyle_service.compute_best3year(conn, window)
     return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# Player Filter
+# ---------------------------------------------------------------------------
+
+@app.route("/api/filter_players", methods=["POST"])
+def filter_players():
+    """Return all player-season rows matching a set of filter criteria.
+
+    Request body::
+
+        {
+            "filters": [
+                {"field": "bpm", "operator": ">=", "value": 5.0, "season_type": "regular"},
+                ...
+            ]
+        }
+
+    Returns::
+
+        {"results": [...], "count": N}
+    """
+    data    = request.get_json(force=True)
+    filters = data.get("filters", [])
+
+    if not isinstance(filters, list):
+        return jsonify({"error": "filters must be a list"}), 400
+
+    try:
+        with db_conn() as conn:
+            result = filter_service.filter_players(conn, filters)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify({"results": result, "count": len(result)})
 
 
 # ---------------------------------------------------------------------------
