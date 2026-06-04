@@ -54,9 +54,10 @@ def _kyle_cache_get(key):
 def _db_fingerprint(conn) -> tuple:
     """Return a hashable fingerprint of the mutable DB state.
 
-    Encodes the full set of selected-player rows (by player_id + season_id)
-    and the count of watched playoff games so that any change to either
-    produces a different key and forces a cache miss.
+    Encodes the full set of selected-player rows (by player_id + season_id),
+    the count of watched playoff games, and a checksum of player_stats so that
+    any change to selected players, watch log, or player stats produces a
+    different key and forces a cache miss.
     """
     selected = tuple(sorted(
         (r[0], r[1])
@@ -67,7 +68,13 @@ def _db_fingerprint(conn) -> tuple:
     watch_count = conn.execute(
         "SELECT COUNT(*) FROM watched_playoff_games"
     ).fetchone()[0]
-    return (selected, watch_count)
+    # Include a stats checksum so that stat updates (bpm, minutes, etc.)
+    # also invalidate the cache.
+    stats_fingerprint = conn.execute(
+        "SELECT COUNT(*), TOTAL(bpm), TOTAL(minutes) FROM player_stats"
+    ).fetchone()
+    stats_key = (stats_fingerprint[0], round(stats_fingerprint[1], 4), round(stats_fingerprint[2], 4))
+    return (selected, watch_count, stats_key)
 
 
 # ---------------------------------------------------------------------------
